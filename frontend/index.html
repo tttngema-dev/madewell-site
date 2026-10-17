@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Made Well Media — Branding Packages</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Made Well Media</h1>
+    <p class="tagline">Professional branding packages, delivered instantly.</p>
+  </header>
+
+  <main>
+    <section id="packages" class="grid">
+      <p class="loading">Loading packages…</p>
+    </section>
+
+    <section id="order-form-wrap" hidden>
+      <h2 id="chosen-package-name"></h2>
+      <form id="order-form">
+        <input type="hidden" id="package_slug" />
+        <label>Your name
+          <input type="text" id="full_name" required />
+        </label>
+        <label>Email
+          <input type="email" id="email" required />
+        </label>
+        <button type="submit">Continue to payment</button>
+      </form>
+    </section>
+
+    <section id="confirmation" hidden>
+      <h2>Order created</h2>
+      <p>Order ID: <code id="order-id"></code></p>
+      <p>Status: <span id="order-status"></span></p>
+      <p class="note">Payment integration comes in Phase 5. For now the order sits in <code>pending_payment</code>.</p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
