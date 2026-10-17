@@ -3,41 +3,111 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Made Well Media — Branding Packages</title>
+  <title>Made Well — Branding Packages</title>
+  <meta name="description" content="Business cards, letterheads, invoices and company profiles. Enter your details once and get matching, professional documents." />
+  <link rel="icon" href="logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header>
-    <h1>Made Well Media</h1>
-    <p class="tagline">Professional branding packages, delivered instantly.</p>
+  <header class="top">
+    <a class="brand" href="#top" aria-label="Made Well home"><img src="logo.png" alt="Made Well" width="56" height="56" /></a>
+    <nav>
+      <a href="#how">How it works</a>
+      <a href="#packages">Packages</a>
+      <a class="btn small" href="#packages">Get started</a>
+    </nav>
   </header>
 
-  <main>
-    <section id="packages" class="grid">
-      <p class="loading">Loading packages…</p>
+  <div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero-copy">
+        <h1>Look like a business that’s been around for years.</h1>
+        <p>Business cards, letterheads, invoices and company profiles. Type your business details once and every document matches.</p>
+        <a class="btn" href="#packages">Choose a package</a>
+        <p class="fine">No designer needed. No waiting for a brief to be approved.</p>
+      </div>
+      <div class="hero-card" aria-hidden="true">
+        <div class="bc t-classic" style="--c:#f5a623">
+          <b>Thando Ngema</b><span>Founder, Made Well</span>
+          <small>082 000 0000<br />hello@madewell.co.za</small>
+        </div>
+        <div class="bc t-bold" style="--c:#f5a623">
+          <b>Made Well</b><small>Branding that works as hard as you do.</small>
+        </div>
+      </div>
     </section>
 
-    <section id="order-form-wrap" hidden>
-      <h2 id="chosen-package-name"></h2>
-      <form id="order-form">
-        <input type="hidden" id="package_slug" />
-        <label>Your name
-          <input type="text" id="full_name" required />
-        </label>
-        <label>Email
-          <input type="email" id="email" required />
-        </label>
-        <button type="submit">Continue to payment</button>
-      </form>
+    <section id="how" class="how">
+      <h2>Three steps to a finished brand</h2>
+      <ol>
+        <li><h3>Choose a package</h3><p>Pick the set of documents your business needs right now.</p></li>
+        <li><h3>Make it yours</h3><p>Enter your details, choose a style and colour, and watch the preview update.</p></li>
+        <li><h3>Get your files</h3><p>Pay securely and download your finished documents.</p></li>
+      </ol>
     </section>
 
-    <section id="confirmation" hidden>
-      <h2>Order created</h2>
-      <p>Order ID: <code id="order-id"></code></p>
-      <p>Status: <span id="order-status"></span></p>
-      <p class="note">Payment integration comes in Phase 5. For now the order sits in <code>pending_payment</code>.</p>
+    <section id="packages" class="packages">
+      <h2>Pick your package</h2>
+      <p class="sub">Every package uses the details you enter once.</p>
+      <div id="package-grid" class="grid"><p class="loading">Loading packages…</p></div>
+    </section>
+
+    <section id="builder" class="builder" hidden>
+      <h2>Make it yours: <span id="chosen-name"></span></h2>
+      <div class="builder-grid">
+        <form id="order-form" novalidate>
+          <input type="hidden" id="package_slug" />
+          <fieldset>
+            <legend>About your business</legend>
+            <label>Business name<input id="biz" autocomplete="organization" placeholder="e.g. Nomsa’s Catering" required /></label>
+            <label>What you do<input id="tagline" placeholder="e.g. Weddings and corporate catering" /></label>
+            <label>Your name and role<input id="person" autocomplete="name" placeholder="e.g. Nomsa Dlamini, Owner" /></label>
+          </fieldset>
+          <fieldset>
+            <legend>How people reach you</legend>
+            <label>Phone<input id="phone" type="tel" autocomplete="tel" placeholder="082 000 0000" /></label>
+            <label>Email<input id="email" type="email" autocomplete="email" placeholder="you@example.com" required /></label>
+            <label>Address<input id="address" autocomplete="street-address" placeholder="12 Smith St, Durban" /></label>
+          </fieldset>
+          <fieldset>
+            <legend>Style</legend>
+            <div class="row" role="radiogroup" aria-label="Design">
+              <label class="chip"><input type="radio" name="tpl" value="classic" checked />Classic</label>
+              <label class="chip"><input type="radio" name="tpl" value="bold" />Bold</label>
+              <label class="chip"><input type="radio" name="tpl" value="minimal" />Minimal</label>
+            </div>
+            <div class="row" role="radiogroup" aria-label="Colour" id="swatches"></div>
+            <label>Logo (optional)<input id="logo" type="file" accept="image/*" /></label>
+          </fieldset>
+          <p id="form-error" class="error" role="alert" hidden></p>
+          <button class="btn" type="submit">Continue to payment</button>
+        </form>
+
+        <aside class="preview" aria-live="polite">
+          <div class="tabs" role="tablist">
+            <button type="button" role="tab" aria-selected="true" data-view="card">Business card</button>
+            <button type="button" role="tab" aria-selected="false" data-view="letter">Letterhead</button>
+          </div>
+          <div id="stage" class="stage"></div>
+          <p class="fine">Preview only. Your final files are print-ready.</p>
+        </aside>
+      </div>
+    </section>
+
+    <section id="confirmation" class="confirm" hidden>
+      <h2>Your order is saved</h2>
+      <p>Order reference: <code id="order-id"></code></p>
+      <p id="order-note"></p>
     </section>
   </main>
+
+  <div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
+  <footer><p>© Made Well Media</p></footer>
 
   <script src="app.js"></script>
 </body>
