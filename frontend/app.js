@@ -1,6 +1,8 @@
-// Points at your local backend during development.
-// We'll change this to your Render URL when we deploy in Step 1.5.
-const API_BASE = window.MADEWELL_API_BASE || 'http://localhost:4000';
+// Use local backend when developing on localhost, production backend otherwise.
+const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname);
+const API_BASE = isLocal
+  ? 'http://localhost:4000'
+  : 'https://madewell-backend.onrender.com';
 
 const $ = (sel) => document.querySelector(sel);
 
