@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { randomBytes } from 'node:crypto';
 import { supabase } from '../supabase.js';
+import { sendRegistrationEmail } from '../email.js';
 
 export const registrationsRouter = Router();
 
@@ -51,6 +52,8 @@ registrationsRouter.post('/registrations', async (req, res) => {
   });
   if (error) { console.error('registration insert failed:', error.message); return res.status(500).json({ error: 'Could not save your registration' }); }
 
-  // TODO: send confirmation email (Resend/SendGrid) to contact_email and to you.
+  // Email you the details. A failure here must not lose the registration (it's already saved above).
+  try { await sendRegistrationEmail(reference, payload); } catch (e) { console.error('email error:', e.message); }
+
   res.status(201).json({ reference });
 });
