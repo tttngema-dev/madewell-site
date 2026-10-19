@@ -8,7 +8,7 @@ function buildEmail(ref, d) {
 
   // ---- plain-text version ----
   const text = [
-    `NEW COMPANY REGISTRATION  ${ref}`, '',
+    `NEW COMPANY REGISTRATION  ${ref}`, 'PAYMENT: R780 received via PayFast', '',
     'COMPANY NAME (in order of preference)', ...names, '',
     `What it does: ${d.activity || '-'}`, '',
     'DIRECTORS',
@@ -25,7 +25,7 @@ function buildEmail(ref, d) {
     `Financial year-end: ${d.financial_year_end}`,
     `Beneficial Ownership filing: ${d.include_bo_filing ? 'YES, include it' : 'No'}`, '',
     'NEXT STEPS',
-    '1. Email the customer to confirm the fee and request certified ID copies of every director.',
+    '1. Email the customer and request certified ID copies of every director.',
     '2. Reserve the name(s) with CIPC, then file the company registration.',
     '3. Send the customer their registration documents.',
   ].join('\n');
@@ -36,7 +36,7 @@ function buildEmail(ref, d) {
   const html = `
   <div style="font-family:Arial,sans-serif;font-size:14px;color:#1d1d1d;max-width:640px">
     <h2 style="margin:0 0 4px">New company registration</h2>
-    <p style="margin:0;color:#666">Reference <b>${esc(ref)}</b></p>
+    <p style="margin:0;color:#666">Reference <b>${esc(ref)}</b> · <b style="color:#1a7f4b">R780 paid via PayFast</b></p>
     ${h('Company name (in order of preference)')}
     <p style="margin:0">${names.map(esc).join('<br>')}</p>
     <p style="margin:8px 0 0"><span style="color:#666">What it does:</span> ${esc(d.activity) || '-'}</p>
@@ -48,12 +48,12 @@ function buildEmail(ref, d) {
     ${h('Company details')}
     <table>${row('Registered office', d.registered_address)}${row('Postal address', d.postal_address)}${row('Company email', d.company_email)}${row('Company phone', d.company_phone)}${row('Financial year-end', d.financial_year_end)}${row('Beneficial Ownership filing', d.include_bo_filing ? 'YES, include it' : 'No')}</table>
     ${h('Next steps')}
-    <ol style="margin:0;padding-left:20px"><li>Email the customer to confirm the fee and request certified ID copies of every director.</li><li>Reserve the name(s) with CIPC, then file the company registration.</li><li>Send the customer their registration documents.</li></ol>
+    <ol style="margin:0;padding-left:20px"><li>Email the customer and request certified ID copies of every director.</li><li>Reserve the name(s) with CIPC, then file the company registration.</li><li>Send the customer their registration documents.</li></ol>
   </div>`;
   return { text, html };
 }
 
-export async function sendRegistrationEmail(ref, d) {
+export async function sendRegistrationEmail(ref, d, paid = false) {
   const key = process.env.RESEND_API_KEY, to = process.env.NOTIFY_EMAIL;
   if (!key || !to) { console.warn('Email not sent: RESEND_API_KEY or NOTIFY_EMAIL is not set'); return false; }
   const { text, html } = buildEmail(ref, d);
@@ -64,7 +64,7 @@ export async function sendRegistrationEmail(ref, d) {
       from: process.env.FROM_EMAIL || 'Made Well <onboarding@resend.dev>',
       to: [to],
       reply_to: d.directors[0]?.email, // hitting Reply goes straight to the customer
-      subject: `New company registration ${ref}: ${d.register_without_name ? 'number only' : d.names[0]}`,
+      subject: `${paid ? 'PAID R780 · ' : ''}New company registration ${ref}: ${d.register_without_name ? 'number only' : d.names[0]}`,
       text, html,
     }),
   });
