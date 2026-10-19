@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { randomBytes } from 'node:crypto';
 import { supabase } from '../supabase.js';
-import { sendRegistrationEmail } from '../email.js';
+import { buildPayment } from '../payfast.js';
 
 export const registrationsRouter = Router();
 
@@ -38,7 +38,7 @@ registrationsRouter.post('/registrations', async (req, res) => {
   const total = shareholders.reduce((a, s) => a + s.pct, 0);
   if (!shareholders.length || Math.abs(total - 100) > 0.01) return res.status(400).json({ error: 'Shareholder percentages must add up to 100' });
 
-  const reference = 'MW-' + randomBytes(3).toString('hex').toUpperCase();
+  const reference = 'MW-' + randomBytes(4).toString('hex').toUpperCase();
   const payload = {
     names, register_without_name: !!b.register_without_name, activity: str(b.activity),
     directors, shareholders,
@@ -48,12 +48,17 @@ registrationsRouter.post('/registrations', async (req, res) => {
   };
 
   const { error } = await supabase.from('company_registrations').insert({
-    reference, status: 'received', contact_email: directors[0].email, data: payload,
+    reference, status: 'awaiting_payment', contact_email: directors[0].email, data: payload,
   });
   if (error) { console.error('registration insert failed:', error.message); return res.status(500).json({ error: 'Could not save your registration' }); }
 
-  // Email you the details. A failure here must not lose the registration (it's already saved above).
-  try { await sendRegistrationEmail(reference, payload); } catch (e) { console.error('email error:', e.message); }
+  res.status(201).json({ reference, payfast: buildPayment({ reference, contact_email: directors[0].email, data: payload }) });
+});
 
-  res.status(201).json({ reference });
+// POST /api/registrations/pay — new payment form for an unpaid registration (used after a cancelled payment)
+registrationsRouter.post('/registrations/pay', async (req, res) => {
+  const { data: reg } = await supabase.from('company_registrations').select('reference,contact_email,data,status')
+    .eq('reference', String(req.body?.reference || '')).maybeSingle();
+  if (!reg || reg.status !== 'awaiting_payment') return res.status(404).json({ error: 'No unpaid registration found for that reference' });
+  res.json({ payfast: buildPayment(reg) });
 });
