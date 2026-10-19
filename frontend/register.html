@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Register your company — Made Well</title>
+  <meta name="description" content="Give us your company details once. We register your (Pty) Ltd with CIPC and email you the documents." />
+  <link rel="icon" href="logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" width="56" height="56" /></a>
+    <nav><a href="index.html#packages">Branding packages</a><a class="btn small" href="register.html">Register a company</a></nav>
+  </header>
+  <div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
+
+  <main class="reg">
+    <div class="reg-intro">
+      <h1>Register your company</h1>
+      <p>Answer a few questions. We register your private company (Pty) Ltd with CIPC and email you the registration documents. Most registrations take 1 to 5 business days.</p>
+    </div>
+
+    <ol id="progress" class="progress" aria-label="Progress"></ol>
+
+    <form id="reg-form" novalidate>
+      <section class="step" data-title="Company name">
+        <h2>What should your company be called?</h2>
+        <p class="hint">CIPC checks names against its register. Give us up to four choices in order of preference, so one rejection doesn’t delay you.</p>
+        <label>First choice<input id="n1" placeholder="e.g. Nomsa’s Catering (Pty) Ltd" required /></label>
+        <label>Second choice (optional)<input id="n2" /></label>
+        <label>Third choice (optional)<input id="n3" /></label>
+        <label>Fourth choice (optional)<input id="n4" /></label>
+        <label class="check"><input type="checkbox" id="nonname" /> I’m not sure yet. Register it with just a number and I’ll choose a name later.</label>
+        <label>What will the company do?<input id="activity" placeholder="e.g. Catering for weddings and events" /></label>
+      </section>
+
+      <section class="step" data-title="Directors">
+        <h2>Who will run the company?</h2>
+        <p class="hint">A private company needs at least one director. Use each person’s name exactly as it appears on their ID.</p>
+        <div id="directors"></div>
+        <button type="button" class="btn ghost" id="add-director">Add another director</button>
+      </section>
+
+      <section class="step" data-title="Owners">
+        <h2>Who owns the company?</h2>
+        <p class="hint">Add everyone who holds shares. The percentages must add up to 100.</p>
+        <div id="shareholders"></div>
+        <button type="button" class="btn ghost" id="add-share">Add another owner</button>
+        <p id="share-total" class="total" aria-live="polite"></p>
+      </section>
+
+      <section class="step" data-title="Addresses">
+        <h2>Where is the company based?</h2>
+        <label>Registered office address<input id="reg-addr" autocomplete="street-address" placeholder="Street, suburb, city, postal code" required /></label>
+        <label class="check"><input type="checkbox" id="same-post" checked /> Our postal address is the same</label>
+        <label id="post-wrap" hidden>Postal address<input id="post-addr" /></label>
+        <label>Company email<input id="co-email" type="email" required /></label>
+        <label>Company phone<input id="co-phone" type="tel" required /></label>
+        <label>Financial year-end
+          <select id="fye">
+            <option>February</option><option>March</option><option>April</option><option>May</option><option>June</option>
+            <option>July</option><option>August</option><option>September</option><option>October</option><option>November</option><option>December</option><option>January</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" id="include-bo" checked /> Also file my Beneficial Ownership declaration. CIPC requires it within 10 business days of registering.</label>
+      </section>
+
+      <section class="step" data-title="Review">
+        <h2>Check your details</h2>
+        <div id="summary" class="summary"></div>
+        <p class="hint">After you submit, we’ll email you to collect certified copies of each director’s ID and to confirm the fee. We never register anything without your go-ahead.</p>
+        <label class="check"><input type="checkbox" id="auth" /> I authorise Made Well to submit this registration to CIPC on behalf of the directors.</label>
+        <label class="check"><input type="checkbox" id="popia" /> I consent to Made Well processing these personal details for this registration (POPIA).</label>
+      </section>
+
+      <p id="reg-error" class="error" role="alert" hidden></p>
+      <div class="nav-row">
+        <button type="button" class="btn ghost" id="back">Back</button>
+        <button type="button" class="btn" id="next">Next</button>
+      </div>
+    </form>
+
+    <section id="done" class="confirm" hidden>
+      <h2>We’ve got your details</h2>
+      <p>Reference: <code id="ref"></code></p>
+      <p>Check your inbox for an email from us. We’ll ask for certified ID copies and confirm the fee before we submit to CIPC.</p>
+      <a class="btn" href="index.html">Back to home</a>
+    </section>
+  </main>
+
+  <div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
+  <footer><p>© Made Well Media</p></footer>
+  <script src="register.js"></script>
+</body>
+</html>
