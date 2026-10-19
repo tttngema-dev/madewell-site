@@ -72,7 +72,7 @@
       <section class="step" data-title="Review">
         <h2>Check your details</h2>
         <div id="summary" class="summary"></div>
-        <p class="hint">After you submit, we’ll email you to collect certified copies of each director’s ID and to confirm the fee. We never register anything without your go-ahead.</p>
+        <p class="hint">The registration fee is <b>R780</b>, paid securely through PayFast on the next screen. After you pay, we’ll email you to collect certified copies of each director’s ID, then register your company.</p>
         <label class="check"><input type="checkbox" id="auth" /> I authorise Made Well to submit this registration to CIPC on behalf of the directors.</label>
         <label class="check"><input type="checkbox" id="popia" /> I consent to Made Well processing these personal details for this registration (POPIA).</label>
       </section>
@@ -84,16 +84,15 @@
       </div>
     </form>
 
-    <section id="done" class="confirm" hidden>
-      <h2>We’ve got your details</h2>
-      <p>Reference: <code id="ref"></code></p>
-      <p>Check your inbox for an email from us. We’ll ask for certified ID copies and confirm the fee before we submit to CIPC.</p>
-      <a class="btn" href="index.html">Back to home</a>
+    <section id="paying" class="confirm" hidden>
+      <h2>Taking you to PayFast…</h2>
+      <p>Please don’t close this page. You’re being sent to PayFast to pay R780 securely.</p>
     </section>
   </main>
 
   <div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
   <footer><p>© Made Well Media</p></footer>
+  <script src="pay.js"></script>
   <script src="register.js"></script>
 </body>
 </html>

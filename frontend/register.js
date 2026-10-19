@@ -29,7 +29,7 @@ function show(i) {
     k === i ? li.setAttribute('aria-current', 'step') : li.removeAttribute('aria-current');
   });
   $('#back').style.visibility = i ? 'visible' : 'hidden';
-  $('#next').textContent = i === steps.length - 1 ? 'Submit my registration' : 'Next';
+  $('#next').textContent = i === steps.length - 1 ? 'Pay R780 and submit' : 'Next';
   $('#reg-error').hidden = true;
   if (i === 2) prefillShares();
   if (i === steps.length - 1) buildSummary();
@@ -166,7 +166,7 @@ $('#next').addEventListener('click', async () => {
   if (cur < steps.length - 1) return show(cur + 1);
 
   const btn = $('#next');
-  btn.disabled = true; btn.textContent = 'Sending…';
+  btn.disabled = true; btn.textContent = 'One moment…';
   try {
     const res = await fetch(`${API_BASE}/api/registrations`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data()),
@@ -174,12 +174,13 @@ $('#next').addEventListener('click', async () => {
     const out = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(out.error || res.statusText);
     $('#reg-form').hidden = true; $('#progress').hidden = true;
-    $('#done').hidden = false; $('#ref').textContent = out.reference;
+    $('#paying').hidden = false;
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    goToPayfast(out.payfast);
   } catch (ex) {
     err.textContent = `We couldn’t send your details: ${ex.message}. Nothing was lost on this page. Please try again in a moment.`;
     err.hidden = false;
-    btn.disabled = false; btn.textContent = 'Submit my registration';
+    btn.disabled = false; btn.textContent = 'Pay R780 and submit';
   }
 });
 $('#back').addEventListener('click', () => show(cur - 1));

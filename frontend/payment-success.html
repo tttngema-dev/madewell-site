@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Thank you — Made Well</title><link rel="icon" href="logo.png" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" /></head>
+<body>
+<header class="top"><a class="brand" href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" width="56" height="56" /></a></header>
+<div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
+<main class="reg"><section class="confirm"><h2>Thank you!</h2>
+<p>Reference: <code id="ref"></code></p>
+<p>PayFast is confirming your payment now. You’ll get a receipt from PayFast by email. Shortly after, we’ll email you to collect certified copies of each director’s ID, and then we’ll register your company.</p>
+<a class="btn" href="index.html">Back to home</a></section></main>
+<div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
+<script>document.getElementById("ref").textContent=new URLSearchParams(location.search).get("ref")||"";</script></body></html>
