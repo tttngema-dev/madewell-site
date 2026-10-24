@@ -1,7 +1,7 @@
 import express, { Router } from 'express';
 import crypto from 'node:crypto';
 import { supabase } from './supabase.js';
-import { sendRegistrationEmail } from './email.js';
+import { sendRegistrationEmail, sendReceiptEmail } from './email.js';
 
 export const FEE = '780.00'; // Company registration price (ZAR). Set here, never taken from the browser.
 const HOST = process.env.PAYFAST_SANDBOX === 'true' ? 'sandbox.payfast.co.za' : 'www.payfast.co.za';
@@ -66,7 +66,11 @@ payfastRouter.post('/payfast/itn', express.urlencoded({ extended: false }), asyn
     const { data: updated } = await supabase.from('company_registrations')
       .update({ status: 'paid', paid_at: new Date().toISOString(), pf_payment_id: body.pf_payment_id })
       .eq('reference', reg.reference).eq('status', 'awaiting_payment').select('reference');
-    if (updated?.length) await sendRegistrationEmail(reg.reference, reg.data, true);
+    if (updated?.length) {
+      // Two separate emails: a failure of one must not stop the other
+      try { await sendRegistrationEmail(reg.reference, reg.data, true); } catch (e) { console.error('owner email failed:', e.message); }
+      try { await sendReceiptEmail(reg, body.pf_payment_id); } catch (e) { console.error('receipt email failed:', e.message); }
+    }
   } catch (e) {
     console.error('ITN error:', e.message);
   }

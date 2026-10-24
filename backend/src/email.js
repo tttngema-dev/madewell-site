@@ -71,3 +71,50 @@ export async function sendRegistrationEmail(ref, d, paid = false) {
   if (!res.ok) { console.error('Resend error:', res.status, await res.text()); return false; }
   return true;
 }
+
+// Receipt sent to the customer (first director's email) once PayFast confirms payment.
+export async function sendReceiptEmail(reg, pfPaymentId) {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return false;
+  const d = reg.data, to = reg.contact_email;
+  const company = d.register_without_name ? 'Your new company (name to be chosen)' : d.names[0];
+  const name = (d.directors[0]?.name || '').split(' ')[0] || 'there';
+  const date = new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Johannesburg' });
+  const lines = [['Reference', reg.reference], ['Date', date], ['Description', 'Company registration (Pty) Ltd'], ['Company', company], ['PayFast payment ID', pfPaymentId || '-'], ['Amount paid', 'R780.00']];
+
+  const text = [`Hi ${name},`, '', 'Thank you. We’ve received your payment.', '',
+    ...lines.map(([k, v]) => `${k}: ${v}`), '',
+    'WHAT HAPPENS NEXT',
+    '1. We’ll email you to collect certified copies of each director’s ID.',
+    '2. Once we have them, we submit your registration to CIPC.',
+    '3. We email you your registration documents.', '',
+    'Please keep this email as your receipt. Reply to this email if you have any questions.', '', 'Made Well'].join('\n');
+
+  const html = `
+  <div style="font-family:Arial,sans-serif;font-size:15px;color:#1d1d1d;max-width:560px;margin:auto">
+    <h2 style="margin:0 0 4px">Payment received</h2>
+    <p style="margin:0 0 20px;color:#666">Hi ${esc(name)}, thank you. Your company registration is under way.</p>
+    <table style="width:100%;border-collapse:collapse">
+      ${lines.map(([k, v]) => `<tr><td style="padding:8px 0;border-bottom:1px solid #eee;color:#666">${esc(k)}</td><td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right"><b>${esc(v)}</b></td></tr>`).join('')}
+    </table>
+    <h3 style="margin:28px 0 8px;color:#b36b00">What happens next</h3>
+    <ol style="margin:0;padding-left:20px;line-height:1.7">
+      <li>We’ll email you to collect certified copies of each director’s ID.</li>
+      <li>Once we have them, we submit your registration to CIPC.</li>
+      <li>We email you your registration documents.</li>
+    </ol>
+    <p style="margin-top:28px;color:#666">Keep this email as your receipt. Reply to it if you have any questions.<br>Made Well</p>
+  </div>`;
+
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: process.env.FROM_EMAIL || 'Made Well <onboarding@resend.dev>',
+      to: [to], reply_to: process.env.NOTIFY_EMAIL || undefined,
+      subject: `Your Made Well receipt: ${reg.reference}`, text, html,
+    }),
+  });
+  if (!res.ok) { console.error('Receipt email error:', res.status, await res.text()); return false; }
+  return true;
+}
