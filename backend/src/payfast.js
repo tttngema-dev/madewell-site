@@ -36,16 +36,21 @@ export function buildPayment(reg) {
     ['item_name', 'Company registration (Pty) Ltd'],
     ['item_description', `Made Well registration ${reg.reference}`],
   ].filter(([, v]) => String(v ?? '').trim() !== '');
+  console.log('PayFast payment created:', reg.reference, '| notify_url =', pairs.find(([k]) => k === 'notify_url')?.[1], '| sandbox =', HOST.startsWith('sandbox'));
   return { url: `https://${HOST}/eng/process`, fields: { ...Object.fromEntries(pairs), signature: sign(pairs, true) } };
 }
 
 export const payfastRouter = Router();
+
+// Open this address in a browser to check the route is deployed and reachable
+payfastRouter.get('/payfast/itn', (_req, res) => res.send('PayFast ITN endpoint is live'));
 
 // PayFast's Instant Transaction Notification: the ONLY thing that marks an order as paid.
 payfastRouter.post('/payfast/itn', express.urlencoded({ extended: false }), async (req, res) => {
   res.sendStatus(200); // acknowledge immediately; PayFast retries if it doesn't get a 200
   try {
     const body = req.body || {};
+    console.log('ITN received:', body.m_payment_id, body.payment_status);
     const pairs = Object.entries(body).filter(([k]) => k !== 'signature');
 
     if (sign(pairs, false) !== body.signature) return console.warn('ITN rejected: bad signature');
@@ -63,9 +68,11 @@ payfastRouter.post('/payfast/itn', express.urlencoded({ extended: false }), asyn
     if (body.payment_status !== 'COMPLETE') return console.log('ITN status:', body.payment_status, reg.reference);
 
     // Only the first successful notification flips the status, so you get one email, not several
-    const { data: updated } = await supabase.from('company_registrations')
+    const { data: updated, error: updErr } = await supabase.from('company_registrations')
       .update({ status: 'paid', paid_at: new Date().toISOString(), pf_payment_id: body.pf_payment_id })
       .eq('reference', reg.reference).eq('status', 'awaiting_payment').select('reference');
+    if (updErr) return console.error('ITN: could not mark as paid. Supabase said:', updErr.message);
+    console.log('ITN accepted:', reg.reference, updated?.length ? 'marked paid' : 'already processed');
     if (updated?.length) {
       // Two separate emails: a failure of one must not stop the other
       try { await sendRegistrationEmail(reg.reference, reg.data, true); } catch (e) { console.error('owner email failed:', e.message); }
