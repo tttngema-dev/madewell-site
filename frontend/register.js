@@ -18,11 +18,30 @@ function validSAID(id) {
   return sum % 10 === 0;
 }
 
+const PROVS = ['Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu-Natal', 'Limpopo', 'Mpumalanga', 'Northern Cape', 'North West', 'Western Cape'];
+const addrHTML = () => `<div class="addr">
+  <label class="full">Street address<input class="a-street" autocomplete="address-line1" placeholder="e.g. 12 Smith Street" /></label>
+  <label>Suburb<input class="a-suburb" autocomplete="address-line2" /></label>
+  <label>City or town<input class="a-city" autocomplete="address-level2" /></label>
+  <label>Province<select class="a-prov"><option value="">Select province</option>${PROVS.map((p) => `<option>${p}</option>`).join('')}</select></label>
+  <label>Postal code<input class="a-code" inputmode="numeric" maxlength="4" autocomplete="postal-code" placeholder="e.g. 4001" /></label>
+</div>`;
+const addrVal = (el) => ['.a-street', '.a-suburb', '.a-city', '.a-prov', '.a-code'].map((c) => el.querySelector(c).value.trim()).filter(Boolean).join(', ');
+const mark = (el, msg) => { el?.setAttribute('aria-invalid', true); el?.focus(); return msg; };
+function addrCheck(el, who) {
+  for (const [c, n] of [['.a-street', 'street address'], ['.a-suburb', 'suburb'], ['.a-city', 'city or town'], ['.a-prov', 'province']])
+    if (!el.querySelector(c).value.trim()) return mark(el.querySelector(c), `${who}: enter the ${n}.`);
+  if (!/^\d{4}$/.test(el.querySelector('.a-code').value.trim())) return mark(el.querySelector('.a-code'), `${who}: enter the 4-digit postal code.`);
+  return '';
+}
+const nameMode = () => document.querySelector('input[name=namemode]:checked').value;
+
 // ---------- progress ----------
 const prog = $('#progress');
 steps.forEach((s, i) => { const li = document.createElement('li'); li.textContent = s.dataset.title; prog.appendChild(li); });
-function show(i) {
+function show(i, push = true) {
   cur = i;
+  if (push && i !== (history.state?.step ?? 0)) history.pushState({ step: i }, '', '#step-' + (i + 1));
   steps.forEach((s, k) => (s.hidden = k !== i));
   [...prog.children].forEach((li, k) => {
     li.className = k < i ? 'done' : k === i ? 'now' : '';
@@ -48,7 +67,7 @@ function addDirector() {
     ${field('Full name', 'd-name', 'autocomplete="name"')}
     <label>ID type<select class="d-type"><option value="id">South African ID</option><option value="passport">Passport</option></select></label>
     ${field('ID or passport number', 'd-id')}
-    ${field('Home address', 'd-addr', 'autocomplete="street-address"')}
+    <div class="addr-wrap"><span class="lbl">Home address</span>${addrHTML()}</div>
     ${field('Email', 'd-email', 'type="email" autocomplete="email"')}
     ${field('Mobile number', 'd-phone', 'type="tel" autocomplete="tel"')}
     ${n > 1 ? '<button type="button" class="link rm">Remove this director</button>' : ''}`;
@@ -92,7 +111,7 @@ function total() {
 
 const getDirectors = () => [...document.querySelectorAll('.dir')].map((e) => ({
   name: e.querySelector('.d-name').value.trim(), id_type: e.querySelector('.d-type').value,
-  id: e.querySelector('.d-id').value.replace(/\s/g, ''), address: e.querySelector('.d-addr').value.trim(),
+  id: e.querySelector('.d-id').value.replace(/\s/g, ''), address: addrVal(e.querySelector('.addr')),
   email: e.querySelector('.d-email').value.trim(), phone: e.querySelector('.d-phone').value.trim(),
 }));
 const getShares = () => [...document.querySelectorAll('.sh')].map((e) => ({
@@ -101,12 +120,12 @@ const getShares = () => [...document.querySelectorAll('.sh')].map((e) => ({
 }));
 
 function data() {
-  const regAddr = $('#reg-addr').value.trim();
+  const regAddr = addrVal($('#reg-addr'));
   return {
-    names: ['#n1', '#n2', '#n3', '#n4'].map((s) => $(s).value.trim()).filter(Boolean),
-    register_without_name: $('#nonname').checked, activity: $('#activity').value.trim(),
+    names: nameMode() === 'name' ? ['#n1', '#n2', '#n3', '#n4'].map((s) => $(s).value.trim()).filter(Boolean) : [],
+    register_without_name: nameMode() === 'number', activity: $('#activity').value.trim(),
     directors: getDirectors(), shareholders: getShares(),
-    registered_address: regAddr, postal_address: $('#same-post').checked ? regAddr : $('#post-addr').value.trim(),
+    registered_address: regAddr, postal_address: $('#same-post').checked ? regAddr : addrVal($('#post-addr')),
     company_email: $('#co-email').value.trim(), company_phone: $('#co-phone').value.trim(),
     financial_year_end: $('#fye').value, include_bo_filing: $('#include-bo').checked,
   };
@@ -115,16 +134,15 @@ function data() {
 // ---------- validation: returns a message, or '' if the step is fine ----------
 function problem(i) {
   const d = data();
-  const mark = (el, msg) => { el?.setAttribute('aria-invalid', true); el?.focus(); return msg; };
   document.querySelectorAll('[aria-invalid]').forEach((e) => e.removeAttribute('aria-invalid'));
-  if (i === 0 && !d.register_without_name && !d.names.length) return mark($('#n1'), 'Enter at least one company name, or tick the box to register with a number only.');
+  if (i === 0 && nameMode() === 'name' && !d.names.length) return mark($('#n1'), 'Enter at least one company name, or choose “I’ll choose a name later”.');
   if (i === 1) {
     for (const [k, e] of [...document.querySelectorAll('.dir')].entries()) {
       const g = d.directors[k], n = k + 1;
       if (!g.name) return mark(e.querySelector('.d-name'), `Director ${n}: enter the full name.`);
       if (g.id_type === 'id' && !validSAID(g.id)) return mark(e.querySelector('.d-id'), `Director ${n}: that doesn’t look like a valid 13-digit South African ID number. Check it for typing mistakes.`);
       if (g.id_type === 'passport' && g.id.length < 5) return mark(e.querySelector('.d-id'), `Director ${n}: enter the passport number.`);
-      if (!g.address) return mark(e.querySelector('.d-addr'), `Director ${n}: enter the home address.`);
+      const ap = addrCheck(e.querySelector('.addr'), `Director ${n}`); if (ap) return ap;
       if (!/^\S+@\S+\.\S+$/.test(g.email)) return mark(e.querySelector('.d-email'), `Director ${n}: enter a valid email address.`);
       if (g.phone.replace(/\D/g, '').length < 9) return mark(e.querySelector('.d-phone'), `Director ${n}: enter a mobile number.`);
     }
@@ -138,8 +156,8 @@ function problem(i) {
     if (Math.abs(d.shareholders.reduce((a, s) => a + s.pct, 0) - 100) > 0.01) return mark($('.s-pct'), 'The ownership percentages must add up to exactly 100.');
   }
   if (i === 3) {
-    if (!d.registered_address) return mark($('#reg-addr'), 'Enter the registered office address.');
-    if (!$('#same-post').checked && !d.postal_address) return mark($('#post-addr'), 'Enter the postal address.');
+    const rp = addrCheck($('#reg-addr'), 'Registered office'); if (rp) return rp;
+    if (!$('#same-post').checked) { const pp = addrCheck($('#post-addr'), 'Postal address'); if (pp) return pp; }
     if (!$('#co-email').validity.valid || !d.company_email) return mark($('#co-email'), 'Enter a valid company email address.');
     if (d.company_phone.replace(/\D/g, '').length < 9) return mark($('#co-phone'), 'Enter a company phone number.');
   }
@@ -160,34 +178,45 @@ function buildSummary() {
 }
 
 // ---------- navigation and submit ----------
+let lastRef = '', lastJson = '';
 $('#next').addEventListener('click', async () => {
   const err = $('#reg-error'), msg = problem(cur);
   if (msg) { err.textContent = msg; err.hidden = false; return; }
   if (cur < steps.length - 1) return show(cur + 1);
 
-  const btn = $('#next');
-  btn.disabled = true; btn.textContent = 'One moment…';
+  const btn = $('#next'), payload = data(), json = JSON.stringify(payload);
+  btn.disabled = true;
+  showLoader('Preparing your registration…');
   try {
-    const res = await fetch(`${API_BASE}/api/registrations`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data()),
+    // If they came back from PayFast without changing anything, reuse the saved registration
+    const reuse = lastRef && json === lastJson;
+    const res = await fetch(`${API_BASE}/api/registrations${reuse ? '/pay' : ''}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: reuse ? JSON.stringify({ reference: lastRef }) : json,
     });
     const out = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(out.error || res.statusText);
-    $('#reg-form').hidden = true; $('#progress').hidden = true;
-    $('#paying').hidden = false;
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (!reuse) { lastRef = out.reference; lastJson = json; }
     goToPayfast(out.payfast);
   } catch (ex) {
+    hideLoader();
     err.textContent = `We couldn’t send your details: ${ex.message}. Nothing was lost on this page. Please try again in a moment.`;
     err.hidden = false;
-    btn.disabled = false; btn.textContent = 'Pay R780 and submit';
+    btn.disabled = false;
   }
 });
-$('#back').addEventListener('click', () => show(cur - 1));
+$('#back').addEventListener('click', () => (history.state?.step ? history.back() : show(cur - 1, false)));
 $('#add-director').addEventListener('click', addDirector);
 $('#add-share').addEventListener('click', () => addShare());
 $('#same-post').addEventListener('change', (e) => ($('#post-wrap').hidden = e.target.checked));
 $('#reg-form').addEventListener('submit', (e) => e.preventDefault());
 
+$('#reg-addr').innerHTML = addrHTML();
+$('#post-addr').innerHTML = addrHTML();
+document.querySelectorAll('input[name=namemode]').forEach((r) => r.addEventListener('change', () => ($('#names-wrap').hidden = nameMode() === 'number')));
+// Browser/phone Back moves one step back with everything still filled in
+history.replaceState({ step: 0 }, '');
+window.addEventListener('popstate', (e) => { if (!$('#reg-form').hidden) show(e.state?.step ?? 0, false); });
+// Coming back from PayFast: remove the loading screen and keep the form as it was
+window.addEventListener('pageshow', (e) => { if (e.persisted) { hideLoader(); $('#next').disabled = false; } });
 addDirector();
-show(0);
+show(0, false);

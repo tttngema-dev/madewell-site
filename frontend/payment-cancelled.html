@@ -4,7 +4,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;800&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="styles.css" /></head>
 <body>
-<header class="top"><a class="brand" href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" width="56" height="56" /></a></header>
+<header class="top"><a class="brand" href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" width="57" height="84" /></a></header>
 <div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
 <main class="reg"><section class="confirm"><h2>Payment not completed</h2>
 <p>No problem. Your details are saved, and you haven’t been charged. Reference: <code id="ref"></code></p>
@@ -18,11 +18,12 @@ const ref = new URLSearchParams(location.search).get("ref") || "";
 document.getElementById("ref").textContent = ref;
 document.getElementById("retry").addEventListener("click", async () => {
   const err = document.getElementById("err"); err.hidden = true;
+  showLoader("Preparing your payment…");
   try {
     const r = await fetch(API_BASE + "/api/registrations/pay", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reference: ref }) });
     const out = await r.json();
     if (!r.ok) throw new Error(out.error);
     goToPayfast(out.payfast);
-  } catch (e) { err.textContent = "We couldn’t restart your payment: " + e.message; err.hidden = false; }
+  } catch (e) { hideLoader(); err.textContent = "We couldn’t restart your payment: " + e.message; err.hidden = false; }
 });
 </script></body></html>
