@@ -51,7 +51,10 @@ function show(i, push = true) {
   $('#next').textContent = i === steps.length - 1 ? 'Pay R780 and submit' : 'Next';
   $('#reg-error').hidden = true;
   if (i === 2) prefillShares();
-  if (i === steps.length - 1) buildSummary();
+  if (i === steps.length - 1) {
+    buildSummary();
+    if (!window._icSent) { window._icSent = 1; if (window.fbq) fbq('track', 'InitiateCheckout', { value: 780, currency: 'ZAR' }); }
+  }
   window.scrollTo({ top: $('.reg').offsetTop, behavior: 'smooth' });
   if (typeof saveDraft === 'function') saveDraft();
 }
