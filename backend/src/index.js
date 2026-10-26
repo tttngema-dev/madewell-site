@@ -4,6 +4,7 @@ import 'dotenv/config';
 import { ordersRouter } from './routes/orders.js';
 import { registrationsRouter } from './routes/registrations.js';
 import { payfastRouter } from './payfast.js';
+import { remindersRouter } from './routes/reminders.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -22,6 +23,7 @@ app.get('/health', (_req, res) =>
 app.use('/api', ordersRouter);
 app.use('/api', registrationsRouter);
 app.use('/api', payfastRouter);
+app.use('/api', remindersRouter);
 
 app.use((err, _req, res, _next) => {
   console.error(err);
