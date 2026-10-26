@@ -26,7 +26,8 @@
 
     <ol id="progress" class="progress" aria-label="Progress"></ol>
 
-    <form id="reg-form" novalidate>
+    <div id="restored" class="restored" hidden><span>Welcome back. We’ve restored the details you’d already entered.</span> <button type="button" class="link" id="clear-draft">Start over</button></div>
+      <form id="reg-form" novalidate>
       <section class="step" data-title="Company name">
         <h2>What should your company be called?</h2>
         <div class="choice" role="radiogroup" aria-label="Company name option">
@@ -78,8 +79,9 @@
         <h2>Check your details</h2>
         <div id="summary" class="summary"></div>
         <p class="hint">The registration fee is <b>R780</b>, paid securely through PayFast on the next screen. After you pay, we’ll email you to collect certified copies of each director’s ID, then register your company.</p>
-        <label class="check"><input type="checkbox" id="auth" /> I authorise Made Well to submit this registration to CIPC on behalf of the directors.</label>
-        <label class="check"><input type="checkbox" id="popia" /> I consent to Made Well processing these personal details for this registration (POPIA).</label>
+        <p class="secure">Secure payment by PayFast. We never see or store your card details. Questions? <a href="https://wa.me/27672581319?text=Hi%20Made%20Well%2C%20I%20have%20a%20question%20about%20registering%20my%20company." target="_blank" rel="noopener">WhatsApp us</a>.</p>
+        <label class="check"><input type="checkbox" id="auth" /> I authorise Made Well to submit this registration to CIPC on behalf of the directors. <a href="terms.html" target="_blank" rel="noopener">Terms &amp; refunds</a></label>
+        <label class="check"><input type="checkbox" id="popia" /> I consent to Made Well processing these personal details for this registration (POPIA). <a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a></label>
       </section>
 
       <p id="reg-error" class="error" role="alert" hidden></p>
@@ -92,8 +94,10 @@
   </main>
 
   <div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
-  <footer><p>© Made Well Media</p></footer>
+  
   <script src="pay.js"></script>
   <script src="register.js"></script>
+<footer><p><a href="privacy.html">Privacy policy</a> &middot; <a href="terms.html">Terms &amp; refunds</a> &middot; <a href="https://wa.me/27672581319?text=Hi%20Made%20Well%2C%20I%20have%20a%20question%20about%20registering%20my%20company." target="_blank" rel="noopener">WhatsApp 067 258 1319</a></p><p>© Made Well Media</p></footer>
+<a class="wa-float" href="https://wa.me/27672581319?text=Hi%20Made%20Well%2C%20I%20have%20a%20question%20about%20registering%20my%20company." target="_blank" rel="noopener" aria-label="Chat to us on WhatsApp">WhatsApp us</a>
 </body>
 </html>

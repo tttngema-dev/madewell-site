@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Finish your registration — Made Well</title><link rel="icon" href="logo.png" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" /></head>
+<body>
+<header class="top"><a class="brand" href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" width="57" height="84" /></a></header>
+<div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
+<main class="reg"><section class="confirm"><h2>Welcome back</h2>
+<p>Your details are saved and waiting. Pay the fixed R780 fee securely through PayFast to finish your registration. Reference: <code id="ref"></code></p>
+<p id="err" class="error" hidden></p>
+<button class="btn" id="retry" type="button">Continue to secure payment</button></section></main>
+<div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
+<script src="pay.js"></script>
+<script>
+const API_BASE = ["localhost","127.0.0.1"].includes(location.hostname) ? "http://localhost:4000" : "https://madewell-backend.onrender.com";
+const ref = new URLSearchParams(location.search).get("ref") || "";
+document.getElementById("ref").textContent = ref;
+document.getElementById("retry").addEventListener("click", async () => {
+  const err = document.getElementById("err"); err.hidden = true;
+  showLoader("Preparing your payment…");
+  try {
+    const r = await fetch(API_BASE + "/api/registrations/pay", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reference: ref }) });
+    const out = await r.json();
+    if (!r.ok) throw new Error(out.error);
+    goToPayfast(out.payfast);
+  } catch (e) { hideLoader(); err.textContent = "We couldn’t open your payment: " + e.message; err.hidden = false; }
+});
+</script><footer><p><a href="privacy.html">Privacy policy</a> &middot; <a href="terms.html">Terms &amp; refunds</a> &middot; <a href="https://wa.me/27672581319?text=Hi%20Made%20Well%2C%20I%20have%20a%20question%20about%20registering%20my%20company." target="_blank" rel="noopener">WhatsApp 067 258 1319</a></p><p>© Made Well Media</p></footer>
+<a class="wa-float" href="https://wa.me/27672581319?text=Hi%20Made%20Well%2C%20I%20have%20a%20question%20about%20registering%20my%20company." target="_blank" rel="noopener" aria-label="Chat to us on WhatsApp">WhatsApp us</a>
+</body></html>

@@ -53,6 +53,7 @@ function show(i, push = true) {
   if (i === 2) prefillShares();
   if (i === steps.length - 1) buildSummary();
   window.scrollTo({ top: $('.reg').offsetTop, behavior: 'smooth' });
+  if (typeof saveDraft === 'function') saveDraft();
 }
 
 // ---------- people blocks ----------
@@ -218,5 +219,41 @@ history.replaceState({ step: 0 }, '');
 window.addEventListener('popstate', (e) => { if (!$('#reg-form').hidden) show(e.state?.step ?? 0, false); });
 // Coming back from PayFast: remove the loading screen and keep the form as it was
 window.addEventListener('pageshow', (e) => { if (e.persisted) { hideLoader(); $('#next').disabled = false; } });
+// ---------- autosave (this browser only, 24 hours) ----------
+const DRAFT = 'mw_draft', SKIP = new Set(['auth', 'popia']);
+const ctrls = () => [...document.querySelectorAll('#reg-form input, #reg-form select')];
+const readVal = (c) => (SKIP.has(c.id) ? '' : c.type === 'checkbox' || c.type === 'radio' ? c.checked : c.value);
+let saveTimer;
+function saveDraft() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      if (!ctrls().some((c) => /^(text|email|tel|number)$/.test(c.type) && c.value.trim())) return localStorage.removeItem(DRAFT);
+      localStorage.setItem(DRAFT, JSON.stringify({ t: Date.now(), step: cur, dirs: document.querySelectorAll('.dir').length, shs: document.querySelectorAll('.sh').length, vals: ctrls().map(readVal) }));
+    } catch (e) { /* storage unavailable: ignore */ }
+  }, 300);
+}
+function restoreDraft() {
+  let d; try { d = JSON.parse(localStorage.getItem(DRAFT) || 'null'); } catch (e) { d = null; }
+  if (!d || Date.now() - d.t > 864e5 || !Array.isArray(d.vals)) return false;
+  while (document.querySelectorAll('.dir').length < d.dirs) addDirector();
+  for (let i = document.querySelectorAll('.sh').length; i < d.shs; i++) addShare();
+  ctrls().forEach((c, i) => {
+    const v = d.vals[i];
+    if (v === undefined || SKIP.has(c.id)) return;
+    if (c.type === 'checkbox' || c.type === 'radio') c.checked = !!v; else c.value = v;
+  });
+  $('#names-wrap').hidden = nameMode() === 'number';
+  $('#post-wrap').hidden = $('#same-post').checked;
+  total();
+  const step = Math.max(0, Math.min(d.step || 0, steps.length - 2));
+  for (let k = 1; k <= step; k++) history.pushState({ step: k }, '', '#step-' + (k + 1));
+  show(step, false);
+  $('#restored').hidden = false;
+  return true;
+}
+$('#reg-form').addEventListener('input', saveDraft);
+$('#reg-form').addEventListener('change', saveDraft);
+$('#clear-draft').addEventListener('click', () => { try { localStorage.removeItem(DRAFT); } catch (e) { /* ignore */ } location.href = 'register.html'; });
 addDirector();
-show(0, false);
+if (!restoreDraft()) show(0, false);

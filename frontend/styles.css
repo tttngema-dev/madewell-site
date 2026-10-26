@@ -241,3 +241,16 @@ details p{color:var(--soft);margin-top:.7rem}
 .ld-msg{font:600 1.5rem var(--serif);max-width:24rem}
 .ld-sub{color:var(--soft)}
 .ld-lock{color:var(--bulb);font-size:.85rem;letter-spacing:.12em;text-transform:uppercase;margin-top:.5rem}
+
+/* ===== Trust, legal, autosave, WhatsApp ===== */
+footer a{color:var(--soft);text-decoration:underline}footer p+p{margin-top:.4rem}
+.wa-float{position:fixed;right:16px;bottom:16px;z-index:50;background:#25d366;color:#06301a;font-weight:700;padding:.7rem 1.1rem;border-radius:999px;text-decoration:none;box-shadow:0 4px 16px rgba(0,0,0,.35)}
+.trust{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem;max-width:1000px;margin:3rem auto;padding:0 1.5rem}
+.trust div{border:1px solid var(--line);border-radius:14px;padding:1.2rem 1.3rem;background:var(--stage-2)}
+.trust b{display:block;margin-bottom:.35rem}.trust p{color:var(--soft);font-size:.95rem}.trust a{color:var(--bulb)}
+@media (max-width:700px){.trust{grid-template-columns:1fr}}
+.secure{background:var(--stage-2);border:1px solid var(--line);border-radius:10px;padding:.8rem 1rem;color:var(--soft);font-size:.95rem}.secure a{color:var(--bulb)}
+.restored{display:flex;gap:1rem;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--stage-2);border:1px solid var(--gold);border-radius:12px;padding:.8rem 1rem;margin-bottom:1rem}
+.legal{max-width:760px;margin:2rem auto 3rem;padding:0 1.25rem;line-height:1.7}
+.legal h1,.legal h2{font-family:var(--serif);margin:1.6rem 0 .5rem}.legal h1{font-size:2.2rem;margin-top:.5rem}.legal h2{font-size:1.3rem}
+.legal a{color:var(--bulb)}.legal .soft{color:var(--soft)}
