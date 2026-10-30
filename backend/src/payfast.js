@@ -2,6 +2,7 @@ import express, { Router } from 'express';
 import crypto from 'node:crypto';
 import { supabase } from './supabase.js';
 import { sendRegistrationEmail, sendReceiptEmail } from './email.js';
+import { push } from './notify.js';
 
 export const FEE = '780.00'; // Company registration price (ZAR). Set here, never taken from the browser.
 const HOST = process.env.PAYFAST_SANDBOX === 'true' ? 'sandbox.payfast.co.za' : 'www.payfast.co.za';
@@ -77,6 +78,7 @@ payfastRouter.post('/payfast/itn', express.urlencoded({ extended: false }), asyn
       // Two separate emails: a failure of one must not stop the other
       try { await sendRegistrationEmail(reg.reference, reg.data, true); } catch (e) { console.error('owner email failed:', e.message); }
       try { await sendReceiptEmail(reg, body.pf_payment_id); } catch (e) { console.error('receipt email failed:', e.message); }
+      try { await push('Payment received', `R780 paid. Ref ${reg.reference}`); } catch (e) { /* ignore */ }
     }
   } catch (e) {
     console.error('ITN error:', e.message);

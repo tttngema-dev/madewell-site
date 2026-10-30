@@ -5,8 +5,10 @@ import { ordersRouter } from './routes/orders.js';
 import { registrationsRouter } from './routes/registrations.js';
 import { payfastRouter } from './payfast.js';
 import { remindersRouter } from './routes/reminders.js';
+import { trackRouter, adminRouter } from './routes/admin.js';
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 4000;
 
 const allowed = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173')
@@ -24,6 +26,8 @@ app.use('/api', ordersRouter);
 app.use('/api', registrationsRouter);
 app.use('/api', payfastRouter);
 app.use('/api', remindersRouter);
+app.use('/api', trackRouter);
+app.use('/api', adminRouter);
 
 app.use((err, _req, res, _next) => {
   console.error(err);
