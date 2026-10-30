@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" /><title>Admin — Made Well</title><link rel="icon" href="logo.png" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+<style>
+.adm{max-width:1100px;margin:1rem auto 4rem;padding:0 1rem}
+.adm h2{font-family:var(--serif);margin:1.6rem 0 .6rem;font-size:1.3rem}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.8rem}
+.card{background:var(--stage-2);border:1px solid var(--line);border-radius:14px;padding:1rem}
+.card b{display:block;font-size:1.9rem;color:var(--bulb)}.card span{color:var(--soft);font-size:.9rem}
+.bar{display:grid;grid-template-columns:minmax(120px,190px) 1fr 90px;gap:.7rem;align-items:center;margin:.35rem 0;font-size:.95rem}
+.bar i{display:block;height:16px;border-radius:8px;background:linear-gradient(90deg,var(--gold),var(--bulb));min-width:3px}
+.bar small{color:var(--soft)}
+.tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin:.5rem 0}.tabs button{background:var(--stage-2);color:var(--paper);border:1px solid var(--line);border-radius:999px;padding:.45rem 1rem;cursor:pointer}
+.tabs button.on{border-color:var(--gold);color:var(--bulb)}
+.tbl{width:100%;border-collapse:collapse;font-size:.92rem}.tbl th,.tbl td{text-align:left;padding:.55rem .5rem;border-bottom:1px solid var(--line)}.tbl th{color:var(--soft);font-weight:500}
+.wrap{overflow-x:auto}
+.reg{background:var(--stage-2);border:1px solid var(--line);border-radius:12px;margin:.5rem 0;padding:.8rem 1rem;cursor:pointer}
+.reg .top2{display:flex;justify-content:space-between;gap:.6rem;flex-wrap:wrap}
+.pill{border-radius:999px;padding:.1rem .7rem;font-size:.8rem;border:1px solid var(--line)}.pill.paid{background:#143d27;border-color:#2ecc71;color:#8ff0b6}.pill.wait{color:var(--soft)}
+.detail{white-space:pre-wrap;font-size:.9rem;line-height:1.55;margin-top:.7rem;border-top:1px solid var(--line);padding-top:.7rem;cursor:text}
+.adm select,.adm input{background:var(--paper);color:var(--stage);border-radius:8px;border:0;padding:.5rem .7rem;font:inherit}
+#login{max-width:360px;margin:20vh auto;padding:0 1rem;display:grid;gap:.8rem}
+#err{color:#ff9d9d}.muted{color:var(--soft);font-size:.85rem}
+</style></head>
+<body>
+<header class="top"><a class="brand" href="index.html"><img src="logo.png" alt="Made Well" width="57" height="84" /></a><nav><span id="upd" class="muted"></span></nav></header>
+<div id="login"><h2 style="font-family:var(--serif)">Admin</h2><input id="pw" type="password" placeholder="Password" autocomplete="current-password" /><button class="btn" id="go">Log in</button><p id="err"></p></div>
+<main class="adm" id="app" hidden>
+  <div class="tabs" id="range"><button data-r="today" class="on">Today</button><button data-r="7d">7 days</button><button data-r="30d">30 days</button></div>
+  <div class="cards" id="cards"></div>
+  <h2>Where people stop</h2><div id="funnel"></div>
+  <h2>Where visitors come from</h2><div id="sources" class="muted"></div>
+  <h2>Recent visitors</h2><div class="wrap"><table class="tbl"><thead><tr><th>Last seen</th><th>Got as far as</th><th>Device</th><th>From</th></tr></thead><tbody id="visitors"></tbody></table></div>
+  <h2>Registrations</h2><input id="q" placeholder="Search name, reference or email" style="width:100%;max-width:420px;margin-bottom:.5rem" /><div id="regs"></div>
+</main>
+<script>
+const API = ['localhost', '127.0.0.1'].includes(location.hostname) ? 'http://localhost:4000' : 'https://madewell-backend.onrender.com';
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const LABEL = { new: 'New', waiting_docs: 'Waiting for documents', submitted: 'Submitted to CIPC', done: 'Done' };
+let key = sessionStorage.getItem('mw_admin') || '', range = 'today', timer, last = null, openRef = null;
+const ago = (t) => { const m = Math.round((Date.now() - t) / 6e4); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago'; };
+async function api(path, opts = {}) {
+  const r = await fetch(API + path, { ...opts, headers: { 'Content-Type': 'application/json', 'x-admin-key': key } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+function details(x) {
+  const d = x.data || {};
+  return [`Reference: ${x.reference}`, `Name choices: ${d.register_without_name ? 'Register with a number' : (d.names || []).join(' | ')}`, `Activity: ${d.activity || '-'}`, '',
+    ...(d.directors || []).map((p, i) => `Director ${i + 1}: ${p.name}\n  ID: ${p.id}\n  ${p.email} · ${p.phone}\n  ${p.address}`), '',
+    'Shareholders: ' + (d.shareholders || []).map((s) => `${s.name} ${s.pct}%`).join(', '), '',
+    `Registered office: ${d.registered_address}`, `Postal: ${d.postal_address}`, `Company email: ${d.company_email || '-'}`, `Year-end: ${d.financial_year_end}`].join('\n');
+}
+function renderRegs() {
+  if (!last) return;
+  const q = $('#q').value.toLowerCase();
+  const rows = last.registrations.filter((x) => !q || JSON.stringify([x.reference, x.email, x.data?.names, x.data?.directors?.map((d) => d.name)]).toLowerCase().includes(q));
+  $('#regs').innerHTML = rows.map((x) => {
+    const paid = x.status === 'paid', nm = x.data?.register_without_name ? 'Name chosen later' : (x.data?.names || [])[0] || '-';
+    return `<div class="reg" data-ref="${esc(x.reference)}"><div class="top2"><b>${esc(nm)}</b><span><span class="pill ${paid ? 'paid' : 'wait'}">${paid ? 'Paid R780' : 'Awaiting payment'}</span></span></div>
+      <div class="muted">${esc(x.data?.directors?.[0]?.name || '')} · ${esc(x.email || '')} · ${new Date(x.created_at).toLocaleString()}</div>
+      ${openRef === x.reference ? `<div class="detail">${esc(details(x))}</div><p style="margin-top:.6rem">Progress: <select data-st="${esc(x.reference)}">${Object.entries(LABEL).map(([k, v]) => `<option value="${k}" ${x.work === k ? 'selected' : ''}>${v}</option>`).join('')}</select></p>` : (paid ? `<div class="muted">${LABEL[x.work] || 'New'}</div>` : '')}</div>`;
+  }).join('') || '<p class="muted">Nothing yet.</p>';
+}
+function render(s) {
+  last = s;
+  const f = Object.fromEntries(s.funnel);
+  $('#cards').innerHTML = [[s.live.now, 'On the site now'], [s.live.inForm, 'Filling in the form now'], [f['Visited the site'], 'Visitors'], [f['Opened the form'], 'Opened the form'], [f['Reached the pay step'], 'Reached the pay step'], [f['Paid (confirmed by PayFast)'], 'Paid'], ['R' + s.revenue.toLocaleString(), 'Revenue']].map(([n, l]) => `<div class="card"><b>${n}</b><span>${l}</span></div>`).join('');
+  const top = Math.max(1, s.funnel[0][1]);
+  $('#funnel').innerHTML = s.funnel.map(([l, n], i) => `<div class="bar"><span>${l}</span><i style="width:${Math.max(1, (n / top) * 100)}%"></i><span>${n} <small>${i && s.funnel[i - 1][1] ? '−' + Math.round((1 - n / s.funnel[i - 1][1]) * 100) + '%' : ''}</small></span></div>`).join('');
+  $('#sources').textContent = Object.entries(s.sources).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}: ${v}`).join(' · ') || 'No visits yet';
+  $('#visitors').innerHTML = s.visitors.map((v) => `<tr><td>${ago(v.last)}</td><td>${esc(v.label)}</td><td>${v.device === 'mobile' ? 'Phone' : 'Computer'}</td><td>${esc(v.source)}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">No visits in this period.</td></tr>';
+  $('#upd').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  renderRegs();
+}
+async function load() { try { render(await api('/api/admin/summary?range=' + range)); } catch (e) { if (/password/i.test(e.message)) logout(); else $('#upd').textContent = 'Error: ' + e.message; } }
+function logout() { sessionStorage.removeItem('mw_admin'); key = ''; clearInterval(timer); $('#app').hidden = true; $('#login').hidden = false; }
+async function start() {
+  try { localStorage.setItem('mw_internal', '1'); } catch (e) {}  // keep your own visits out of the statistics
+  $('#login').hidden = true; $('#app').hidden = false; await load(); clearInterval(timer); timer = setInterval(() => { if (!document.hidden) load(); }, 20000);
+}
+$('#go').onclick = async () => {
+  key = $('#pw').value; $('#err').textContent = '';
+  try { await api('/api/admin/summary?range=today'); sessionStorage.setItem('mw_admin', key); start(); } catch (e) { $('#err').textContent = e.message; }
+};
+$('#pw').addEventListener('keydown', (e) => e.key === 'Enter' && $('#go').click());
+$('#range').onclick = (e) => { const r = e.target.dataset.r; if (!r) return; range = r; document.querySelectorAll('#range button').forEach((b) => b.classList.toggle('on', b === e.target)); load(); };
+$('#q').oninput = renderRegs;
+$('#regs').onclick = (e) => {
+  if (e.target.closest('select')) return;
+  const el = e.target.closest('.reg'); if (!el || e.target.closest('.detail')) return;
+  openRef = openRef === el.dataset.ref ? null : el.dataset.ref; renderRegs();
+};
+$('#regs').onchange = async (e) => {
+  const ref = e.target.dataset.st; if (!ref) return;
+  try { await api(`/api/admin/registration/${encodeURIComponent(ref)}/status`, { method: 'POST', body: JSON.stringify({ status: e.target.value }) }); last.registrations.find((x) => x.reference === ref).work = e.target.value; }
+  catch (err) { alert('Could not save: ' + err.message); }
+};
+if (key) start();
+</script></body></html>

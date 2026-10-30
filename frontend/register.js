@@ -51,6 +51,8 @@ function show(i, push = true) {
   $('#next').textContent = i === steps.length - 1 ? 'Pay R780 and submit' : 'Next';
   $('#reg-error').hidden = true;
   if (i === 2) prefillShares();
+  if (window.mwTrack) mwTrack('step', i + 1);
+  if (window.fbq) fbq('trackCustom', 'FormStep', { step: i + 1 });
   if (i === steps.length - 1) {
     buildSummary();
     if (!window._icSent) { window._icSent = 1; if (window.fbq) fbq('track', 'InitiateCheckout', { value: 780, currency: 'ZAR' }); }
@@ -190,6 +192,7 @@ $('#next').addEventListener('click', async () => {
 
   const btn = $('#next'), payload = data(), json = JSON.stringify(payload);
   btn.disabled = true;
+  if (window.mwTrack) mwTrack('pay_click');
   showLoader('Preparing your registration…');
   try {
     // If they came back from PayFast without changing anything, reuse the saved registration
