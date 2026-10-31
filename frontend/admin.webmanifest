@@ -1,0 +1,23 @@
+{
+ "name": "Made Well Admin",
+ "short_name": "MW Admin",
+ "start_url": "/admin.html",
+ "scope": "/admin.html",
+ "display": "standalone",
+ "background_color": "#0b1730",
+ "theme_color": "#0b1730",
+ "icons": [
+  {
+   "src": "admin-icon-192.png",
+   "sizes": "192x192",
+   "type": "image/png",
+   "purpose": "any maskable"
+  },
+  {
+   "src": "admin-icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any maskable"
+  }
+ ]
+}

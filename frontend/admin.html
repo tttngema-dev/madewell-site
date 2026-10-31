@@ -1,6 +1,8 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
 <meta name="robots" content="noindex,nofollow" /><title>Admin — Made Well</title><link rel="icon" href="logo.png" />
+<link rel="manifest" href="admin.webmanifest" /><meta name="theme-color" content="#0b1730" />
+<link rel="apple-touch-icon" href="admin-apple-icon.png" /><meta name="apple-mobile-web-app-capable" content="yes" /><meta name="apple-mobile-web-app-title" content="MW Admin" />
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;800&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="styles.css" />
 <style>
@@ -101,4 +103,5 @@ $('#regs').onchange = async (e) => {
   catch (err) { alert('Could not save: ' + err.message); }
 };
 if (key) start();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('admin-sw.js', { scope: '/admin.html' }).catch(() => {});
 </script></body></html>
