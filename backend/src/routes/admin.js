@@ -88,7 +88,7 @@ adminRouter.get('/admin/summary', async (req, res) => {
     res.json({
       generated: now,
       live: { now: live.length, inForm: live.filter((v) => v.max >= 0.5 && v.max < 7).length },
-      funnel, sources, revenue: paid.length * 780,
+      funnel, sources, revenue: paid.length * 580,
       visitors: vs.sort((a, b) => b.last - a.last).slice(0, 40),
       registrations: (regs || []).map((x) => ({ reference: x.reference, status: x.status, created_at: x.created_at, paid_at: x.paid_at, email: x.contact_email, work: x.work_status || 'new', data: x.data })),
     });

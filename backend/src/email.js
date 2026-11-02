@@ -8,7 +8,7 @@ function buildEmail(ref, d) {
 
   // ---- plain-text version ----
   const text = [
-    `NEW COMPANY REGISTRATION  ${ref}`, 'PAYMENT: R780 received via PayFast', '',
+    `NEW COMPANY REGISTRATION  ${ref}`, 'PAYMENT: R580 received via PayFast', '',
     'COMPANY NAME (in order of preference)', ...names, '',
     `What it does: ${d.activity || '-'}`, '',
     'DIRECTORS',
@@ -36,7 +36,7 @@ function buildEmail(ref, d) {
   const html = `
   <div style="font-family:Arial,sans-serif;font-size:14px;color:#1d1d1d;max-width:640px">
     <h2 style="margin:0 0 4px">New company registration</h2>
-    <p style="margin:0;color:#666">Reference <b>${esc(ref)}</b> · <b style="color:#1a7f4b">R780 paid via PayFast</b></p>
+    <p style="margin:0;color:#666">Reference <b>${esc(ref)}</b> · <b style="color:#1a7f4b">R580 paid via PayFast</b></p>
     ${h('Company name (in order of preference)')}
     <p style="margin:0">${names.map(esc).join('<br>')}</p>
     <p style="margin:8px 0 0"><span style="color:#666">What it does:</span> ${esc(d.activity) || '-'}</p>
@@ -64,7 +64,7 @@ export async function sendRegistrationEmail(ref, d, paid = false) {
       from: process.env.FROM_EMAIL || 'Made Well <onboarding@resend.dev>',
       to: [to],
       reply_to: d.directors[0]?.email, // hitting Reply goes straight to the customer
-      subject: `${paid ? 'PAID R780 · ' : ''}New company registration ${ref}: ${d.register_without_name ? 'number only' : d.names[0]}`,
+      subject: `${paid ? 'PAID R580 · ' : ''}New company registration ${ref}: ${d.register_without_name ? 'number only' : d.names[0]}`,
       text, html,
     }),
   });
@@ -80,7 +80,7 @@ export async function sendReceiptEmail(reg, pfPaymentId) {
   const company = d.register_without_name ? 'Your new company (name to be chosen)' : d.names[0];
   const name = (d.directors[0]?.name || '').split(' ')[0] || 'there';
   const date = new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Johannesburg' });
-  const lines = [['Reference', reg.reference], ['Date', date], ['Description', 'Company registration (Pty) Ltd'], ['Company', company], ['PayFast payment ID', pfPaymentId || '-'], ['Amount paid', 'R780.00']];
+  const lines = [['Reference', reg.reference], ['Date', date], ['Description', 'Company registration (Pty) Ltd'], ['Company', company], ['PayFast payment ID', pfPaymentId || '-'], ['Amount paid', 'R580.00']];
 
   const text = [`Hi ${name},`, '', 'Thank you. We’ve received your payment.', '',
     ...lines.map(([k, v]) => `${k}: ${v}`), '',

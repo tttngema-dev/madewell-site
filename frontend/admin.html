@@ -63,7 +63,7 @@ function renderRegs() {
   const rows = last.registrations.filter((x) => !q || JSON.stringify([x.reference, x.email, x.data?.names, x.data?.directors?.map((d) => d.name)]).toLowerCase().includes(q));
   $('#regs').innerHTML = rows.map((x) => {
     const paid = x.status === 'paid', nm = x.data?.register_without_name ? 'Name chosen later' : (x.data?.names || [])[0] || '-';
-    return `<div class="reg" data-ref="${esc(x.reference)}"><div class="top2"><b>${esc(nm)}</b><span><span class="pill ${paid ? 'paid' : 'wait'}">${paid ? 'Paid R780' : 'Awaiting payment'}</span></span></div>
+    return `<div class="reg" data-ref="${esc(x.reference)}"><div class="top2"><b>${esc(nm)}</b><span><span class="pill ${paid ? 'paid' : 'wait'}">${paid ? 'Paid' : 'Awaiting payment'}</span></span></div>
       <div class="muted">${esc(x.data?.directors?.[0]?.name || '')} · ${esc(x.email || '')} · ${new Date(x.created_at).toLocaleString()}</div>
       ${openRef === x.reference ? `<div class="detail">${esc(details(x))}</div><p style="margin-top:.6rem">Progress: <select data-st="${esc(x.reference)}">${Object.entries(LABEL).map(([k, v]) => `<option value="${k}" ${x.work === k ? 'selected' : ''}>${v}</option>`).join('')}</select></p>` : (paid ? `<div class="muted">${LABEL[x.work] || 'New'}</div>` : '')}</div>`;
   }).join('') || '<p class="muted">Nothing yet.</p>';

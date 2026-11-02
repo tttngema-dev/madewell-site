@@ -48,14 +48,14 @@ function show(i, push = true) {
     k === i ? li.setAttribute('aria-current', 'step') : li.removeAttribute('aria-current');
   });
   $('#back').style.visibility = i ? 'visible' : 'hidden';
-  $('#next').textContent = i === steps.length - 1 ? 'Pay R780 and submit' : 'Next';
+  $('#next').textContent = i === steps.length - 1 ? 'Pay R580 and submit' : 'Next';
   $('#reg-error').hidden = true;
   if (i === 2) prefillShares();
   if (window.mwTrack) mwTrack('step', i + 1);
   if (window.fbq) fbq('trackCustom', 'FormStep', { step: i + 1 });
   if (i === steps.length - 1) {
     buildSummary();
-    if (!window._icSent) { window._icSent = 1; if (window.fbq) fbq('track', 'InitiateCheckout', { value: 780, currency: 'ZAR' }); }
+    if (!window._icSent) { window._icSent = 1; if (window.fbq) fbq('track', 'InitiateCheckout', { value: 580, currency: 'ZAR' }); }
   }
   window.scrollTo({ top: $('.reg').offsetTop, behavior: 'smooth' });
   if (typeof saveDraft === 'function') saveDraft();
