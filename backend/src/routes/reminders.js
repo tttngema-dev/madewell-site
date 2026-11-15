@@ -26,6 +26,7 @@ async function run(req, res) {
   const secret = process.env.CRON_SECRET;
   if (!secret || (req.get('x-cron-secret') || req.query.key) !== secret) return res.status(401).json({ error: 'Unauthorized' });
   const now = Date.now();
+  await supabase.from('bo_files').delete().lt('created_at', new Date(now - 14 * 864e5).toISOString()); // never keep ID copies longer than 14 days
   const { data: rows, error } = await supabase.from('company_registrations')
     .select('reference,contact_email,created_at,data').eq('status', 'awaiting_payment').is('reminded_at', null)
     .gte('created_at', new Date(now - 48 * 36e5).toISOString()).lte('created_at', new Date(now - 60 * 6e4).toISOString())

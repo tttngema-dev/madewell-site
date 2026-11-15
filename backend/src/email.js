@@ -118,3 +118,48 @@ export async function sendReceiptEmail(reg, pfPaymentId) {
   if (!res.ok) { console.error('Receipt email error:', res.status, await res.text()); return false; }
   return true;
 }
+
+// ---------- Beneficial ownership filing ----------
+const FROM = () => process.env.FROM_EMAIL || 'Made Well <onboarding@resend.dev>';
+const attach = (files) => files.map((f) => ({ filename: f.name, content: f.data }));
+
+export async function sendBoEmail(ref, d, files, pfId) {
+  const key = process.env.RESEND_API_KEY, to = process.env.NOTIFY_EMAIL;
+  if (!key || !to) { console.warn('BO email not sent: RESEND_API_KEY or NOTIFY_EMAIL is not set'); return false; }
+  const c = d.company, ids = files.filter((f) => f.kind === 'id'), pdfs = files.filter((f) => f.kind === 'pdf');
+  const missing = d.owners.filter((_, i) => !ids.some((f) => f.owner === i)).map((o) => o.name);
+  const text = [
+    `NEW BENEFICIAL OWNERSHIP FILING  ${ref}`, `PAYMENT: R500 received via PayFast${pfId ? ` (PayFast ID ${pfId})` : ''}`, '',
+    `COMPANY: ${c.name}`, `Registration no.: ${c.reg}`, `Company registered on: ${c.regDate || 'not given (documents say "Since incorporation")'}`,
+    `Contact: ${c.email} / ${c.phone}`, '', 'OWNERS',
+    ...d.owners.flatMap((o, i) => [`${i + 1}. ${o.name}: ${o.pct}%`, `   ${o.idType === 'passport' ? 'Passport' : 'ID'}: ${o.id}`, `   ${o.email} / ${o.phone}`, `   ${o.address}`]), '',
+    `AUTHORISED DIRECTOR (signs the mandate): ${d.auth.name} (${d.auth.id})`, `Signed electronically as: ${d.signature.name}`, '',
+    missing.length ? `ID COPIES MISSING FOR: ${missing.join(', ')}. Ask the customer to send certified copies.` : 'Certified ID copies for every owner are attached.', '',
+    'ATTACHED: ' + files.map((f) => f.name).join(', '), '',
+    'CHECK BEFORE FILING', '- Owners who hold under 5% may not need to appear on the beneficial ownership register.', '- Confirm the registration number and all ID numbers.', '',
+    'NEXT STEPS', '1. Review the three drafted documents.', '2. File with CIPC.', '3. Email the customer the CIPC confirmation.',
+  ].join('\n');
+  const html = `<pre style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap">${esc(text)}</pre>`;
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: FROM(), to: [to], reply_to: c.email, subject: `PAID R500 · Beneficial ownership · ${c.name}`, text, html, attachments: attach(files) }),
+  });
+  if (!res.ok) { console.error('BO owner email error:', res.status, await res.text()); return false; }
+  return true;
+}
+
+export async function sendBoReceipt(reg, files, pfId) {
+  const key = process.env.RESEND_API_KEY; if (!key || !reg.contact_email) return false;
+  const c = reg.data.company, date = new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' });
+  const html = `<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;color:#0b1730;line-height:1.6"><h2>Thank you. We have your beneficial ownership filing.</h2>
+<p>Hi ${esc(reg.data.auth.name.split(' ')[0])}, we've received your details and payment for <b>${esc(c.name)}</b>.</p>
+<table style="border-collapse:collapse;width:100%"><tr><td style="padding:6px 0;color:#667">Reference</td><td><b>${esc(reg.reference)}</b></td></tr><tr><td style="padding:6px 0;color:#667">Date</td><td>${date}</td></tr><tr><td style="padding:6px 0;color:#667">Amount paid</td><td><b>R500.00</b></td></tr>${pfId ? `<tr><td style="padding:6px 0;color:#667">PayFast payment ID</td><td>${esc(pfId)}</td></tr>` : ''}</table>
+<h3>What happens next</h3><ol><li>We check your documents and file them with CIPC.</li><li>We email you the CIPC confirmation.</li></ol>
+<p>Copies of the three documents we prepared for you are attached. Questions? <a href="https://wa.me/27672581319">WhatsApp 067 258 1319</a>.</p></div>`;
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: FROM(), to: [reg.contact_email], reply_to: process.env.NOTIFY_EMAIL || undefined, subject: `Receipt: beneficial ownership filing for ${c.name}`, html, attachments: attach(files.filter((f) => f.kind === 'pdf')) }),
+  });
+  if (!res.ok) { console.error('BO receipt error:', res.status, await res.text()); return false; }
+  return true;
+}

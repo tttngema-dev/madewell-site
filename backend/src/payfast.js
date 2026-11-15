@@ -1,9 +1,10 @@
 import express, { Router } from 'express';
 import crypto from 'node:crypto';
 import { supabase } from './supabase.js';
-import { sendRegistrationEmail, sendReceiptEmail } from './email.js';
+import { sendRegistrationEmail, sendReceiptEmail, sendBoEmail, sendBoReceipt } from './email.js';
 import { push } from './notify.js';
 
+export const FEE_BO = '500.00'; // Beneficial ownership filing price (ZAR)
 export const FEE = '580.00'; // Company registration price (ZAR). Set here, never taken from the browser.
 const HOST = process.env.PAYFAST_SANDBOX === 'true' ? 'sandbox.payfast.co.za' : 'www.payfast.co.za';
 
@@ -21,21 +22,21 @@ const sign = (pairs, skipEmpty) => {
 };
 
 // Build the signed form the browser posts to PayFast. Field ORDER matters for the signature.
-export function buildPayment(reg) {
-  const [first, ...rest] = (reg.data.directors[0]?.name || 'Customer').split(' ');
+export function buildPayment(reg, o = {}) {
+  const [first, ...rest] = (o.payer || reg.data?.directors?.[0]?.name || 'Customer').split(' ');
   const pairs = [
     ['merchant_id', process.env.PAYFAST_MERCHANT_ID],
     ['merchant_key', process.env.PAYFAST_MERCHANT_KEY],
-    ['return_url', `${process.env.FRONTEND_URL}/payment-success.html?ref=${reg.reference}`],
-    ['cancel_url', `${process.env.FRONTEND_URL}/payment-cancelled.html?ref=${reg.reference}`],
+    ['return_url', `${process.env.FRONTEND_URL}/${o.ok || 'payment-success.html'}?ref=${reg.reference}`],
+    ['cancel_url', `${process.env.FRONTEND_URL}/${o.cancel || 'payment-cancelled.html'}?ref=${reg.reference}`],
     ['notify_url', `${process.env.BACKEND_URL}/api/payfast/itn`],
     ['name_first', first],
     ['name_last', rest.join(' ')],
     ['email_address', reg.contact_email],
     ['m_payment_id', reg.reference],
-    ['amount', FEE],
-    ['item_name', 'Company registration (Pty) Ltd'],
-    ['item_description', `Made Well registration ${reg.reference}`],
+    ['amount', o.amount || FEE],
+    ['item_name', o.item || 'Company registration (Pty) Ltd'],
+    ['item_description', o.desc || `Made Well registration ${reg.reference}`],
   ].filter(([, v]) => String(v ?? '').trim() !== '');
   console.log('PayFast payment created:', reg.reference, '| notify_url =', pairs.find(([k]) => k === 'notify_url')?.[1], '| sandbox =', HOST.startsWith('sandbox'));
   return { url: `https://${HOST}/eng/process`, fields: { ...Object.fromEntries(pairs), signature: sign(pairs, true) } };
@@ -56,9 +57,10 @@ payfastRouter.post('/payfast/itn', express.urlencoded({ extended: false }), asyn
 
     if (sign(pairs, false) !== body.signature) return console.warn('ITN rejected: bad signature');
 
-    const { data: reg } = await supabase.from('company_registrations').select('*').eq('reference', body.m_payment_id).maybeSingle();
+    const isBo = String(body.m_payment_id || '').startsWith('BO-'), table = isBo ? 'bo_filings' : 'company_registrations';
+    const { data: reg } = await supabase.from(table).select('*').eq('reference', body.m_payment_id).maybeSingle();
     if (!reg) return console.warn('ITN rejected: unknown reference', body.m_payment_id);
-    if (Math.abs(parseFloat(body.amount_gross) - parseFloat(FEE)) > 0.01) return console.warn('ITN rejected: wrong amount', body.amount_gross);
+    if (Math.abs(parseFloat(body.amount_gross) - parseFloat(isBo ? FEE_BO : FEE)) > 0.01) return console.warn('ITN rejected: wrong amount', body.amount_gross);
 
     // Ask PayFast to confirm it really sent this
     const check = await fetch(`https://${HOST}/eng/query/validate`, {
@@ -69,12 +71,15 @@ payfastRouter.post('/payfast/itn', express.urlencoded({ extended: false }), asyn
     if (body.payment_status !== 'COMPLETE') return console.log('ITN status:', body.payment_status, reg.reference);
 
     // Only the first successful notification flips the status, so you get one email, not several
-    const { data: updated, error: updErr } = await supabase.from('company_registrations')
+    const { data: updated, error: updErr } = await supabase.from(table)
       .update({ status: 'paid', paid_at: new Date().toISOString(), pf_payment_id: body.pf_payment_id })
       .eq('reference', reg.reference).eq('status', 'awaiting_payment').select('reference');
     if (updErr) return console.error('ITN: could not mark as paid. Supabase said:', updErr.message);
     console.log('ITN accepted:', reg.reference, updated?.length ? 'marked paid' : 'already processed');
-    if (updated?.length) {
+    if (updated?.length && isBo) {
+      try { await processBoPaid(reg, body.pf_payment_id); } catch (e) { console.error('BO processing failed:', e.message); }
+      try { await push('Beneficial ownership paid', `R500 paid. Ref ${reg.reference}`); } catch (e) { /* ignore */ }
+    } else if (updated?.length) {
       // Two separate emails: a failure of one must not stop the other
       try { await sendRegistrationEmail(reg.reference, reg.data, true); } catch (e) { console.error('owner email failed:', e.message); }
       try { await sendReceiptEmail(reg, body.pf_payment_id); } catch (e) { console.error('receipt email failed:', e.message); }
@@ -84,3 +89,12 @@ payfastRouter.post('/payfast/itn', express.urlencoded({ extended: false }), asyn
     console.error('ITN error:', e.message);
   }
 });
+
+// After a beneficial ownership payment: email the team the PDFs and ID copies, email the customer a receipt, then delete the files.
+async function processBoPaid(reg, pfId) {
+  const { data: files } = await supabase.from('bo_files').select('kind,owner,name,mime,data').eq('reference', reg.reference);
+  const sent = await sendBoEmail(reg.reference, reg.data, files || [], pfId);
+  try { await sendBoReceipt(reg, files || [], pfId); } catch (e) { console.error('BO receipt email failed:', e.message); }
+  if (sent) await supabase.from('bo_files').delete().eq('reference', reg.reference); // keep ID copies only as long as needed
+  else console.error('BO email to team failed; files kept so nothing is lost:', reg.reference);
+}
