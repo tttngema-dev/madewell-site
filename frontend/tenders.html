@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tenders — Made Well</title>
+  <meta name="description" content="Discover open South African government tenders. Search by keyword, department, category and closing date." />
+  <link rel="icon" href="logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="tenders.css" />
+  <script src="track.js"></script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" width="57" height="84" /></a>
+    <nav>
+      <a class="hide-m" href="index.html#how">How it works</a>
+      <a class="hide-m" href="tenders.html" aria-current="page">Tenders</a>
+      <a class="hide-m" href="dashboard.html" data-auth="user" hidden>Dashboard</a>
+      <a class="btn small" href="login.html" data-auth="guest">Sign in</a>
+      <a class="btn small" href="dashboard.html" data-auth="user" hidden>Dashboard</a>
+    </nav>
+  </header>
+  <div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
+
+  <main class="tenders-main">
+    <section class="tenders-hero">
+      <p class="eyebrow">Government procurement · South Africa</p>
+      <h1>Find open tenders</h1>
+      <p class="lead">Browse live opportunities from National Treasury eTenders. No account needed to search — sign in to save and track.</p>
+    </section>
+
+    <section class="tenders-toolbar" aria-label="Search and filters">
+      <form id="search-form" class="search-row" role="search">
+        <label class="sr-only" for="q">Keywords</label>
+        <input id="q" name="q" type="search" placeholder="Keyword, tender number, department…" autocomplete="off" />
+        <button class="btn" type="submit">Search</button>
+      </form>
+      <div class="filters-row">
+        <label>Status
+          <select id="status">
+            <option value="open">Open</option>
+            <option value="all">All</option>
+            <option value="closed">Closed</option>
+          </select>
+        </label>
+        <label>Category
+          <select id="category">
+            <option value="">Any</option>
+            <option value="services">Services</option>
+            <option value="goods">Goods</option>
+            <option value="works">Works</option>
+          </select>
+        </label>
+        <label>Sort
+          <select id="sort">
+            <option value="closing">Closing soonest</option>
+            <option value="newest">Newest first</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section class="tenders-meta" id="meta" aria-live="polite"></section>
+    <section id="results" class="tenders-list" aria-live="polite">
+      <p class="loading">Loading tenders…</p>
+    </section>
+
+    <nav class="pager" id="pager" hidden>
+      <button type="button" class="btn small" id="prev" disabled>Previous</button>
+      <span id="page-label"></span>
+      <button type="button" class="btn small" id="next">Next</button>
+    </nav>
+
+    <p class="fine source-note">
+      Data from the <a href="https://data.etenders.gov.za/" target="_blank" rel="noopener">National Treasury eTenders OCDS API</a>
+      (Open Data Commons PDDL). Always verify documents and closing times on the official portal before submitting.
+    </p>
+  </main>
+
+  <div id="detail-backdrop" class="detail-backdrop" hidden></div>
+  <aside id="detail" class="detail-panel" role="dialog" aria-modal="true" aria-labelledby="detail-title" hidden>
+    <button type="button" class="detail-close" id="detail-close" aria-label="Close">&times;</button>
+    <div id="detail-body"></div>
+  </aside>
+
+  <footer class="site-foot">
+    <p><a href="index.html">Made Well</a> · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="auth.js"></script>
+  <script src="tenders.js"></script>
+</body>
+</html>

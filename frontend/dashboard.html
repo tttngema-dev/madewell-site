@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dashboard — Made Well</title>
+  <link rel="icon" href="logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="dashboard.css" />
+  <script src="track.js"></script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" width="57" height="84" /></a>
+    <nav>
+      <a class="hide-m" href="tenders.html">Tenders</a>
+      <a class="hide-m" href="dashboard.html" aria-current="page">Dashboard</a>
+      <span class="nav-email hide-m" data-auth-email></span>
+      <button type="button" class="btn small ghost-btn" id="btn-signout">Sign out</button>
+    </nav>
+  </header>
+  <div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
+
+  <main class="dash-main">
+    <header class="dash-hero">
+      <h1>Your dashboard</h1>
+      <p class="lead">Saved tenders, company profile, and upcoming deadlines.</p>
+    </header>
+
+    <div class="dash-grid">
+      <section class="dash-panel" id="panel-deadlines">
+        <h2>Upcoming deadlines</h2>
+        <div id="deadlines" class="stack"><p class="muted">Loading…</p></div>
+      </section>
+
+      <section class="dash-panel" id="panel-saved">
+        <div class="panel-head">
+          <h2>Saved tenders</h2>
+          <a class="btn small" href="tenders.html">Browse tenders</a>
+        </div>
+        <div id="saved-list" class="stack"><p class="muted">Loading…</p></div>
+      </section>
+
+      <section class="dash-panel full" id="panel-profile">
+        <h2>Company profile</h2>
+        <p class="fine">Reusable details for tender forms. Stored securely against your account.</p>
+        <form id="profile-form" class="profile-form">
+          <fieldset>
+            <legend>Company</legend>
+            <div class="form-row">
+              <label>Registered name
+                <input name="registered_name" type="text" autocomplete="organization" />
+              </label>
+              <label>Trading name
+                <input name="trading_name" type="text" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label>CIPC / registration number
+                <input name="cipc_number" type="text" />
+              </label>
+              <label>Industries (comma-separated)
+                <input name="industries" type="text" placeholder="Construction, Cleaning, IT" />
+              </label>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Contact &amp; address</legend>
+            <div class="form-row">
+              <label>Email
+                <input name="contact_email" type="email" />
+              </label>
+              <label>Phone
+                <input name="contact_phone" type="tel" />
+              </label>
+            </div>
+            <label>Address line 1
+              <input name="address_line1" type="text" />
+            </label>
+            <label>Address line 2
+              <input name="address_line2" type="text" />
+            </label>
+            <div class="form-row">
+              <label>City
+                <input name="city" type="text" />
+              </label>
+              <label>Province
+                <select name="province">
+                  <option value="">—</option>
+                  <option>Eastern Cape</option>
+                  <option>Free State</option>
+                  <option>Gauteng</option>
+                  <option>KwaZulu-Natal</option>
+                  <option>Limpopo</option>
+                  <option>Mpumalanga</option>
+                  <option>North West</option>
+                  <option>Northern Cape</option>
+                  <option>Western Cape</option>
+                </select>
+              </label>
+              <label>Postal code
+                <input name="postal_code" type="text" />
+              </label>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Tax &amp; compliance</legend>
+            <div class="form-row">
+              <label>Tax number
+                <input name="tax_number" type="text" />
+              </label>
+              <label>VAT number
+                <input name="vat_number" type="text" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label>B-BBEE level
+                <select name="bbbee_level">
+                  <option value="">—</option>
+                  <option>1</option><option>2</option><option>3</option><option>4</option>
+                  <option>5</option><option>6</option><option>7</option><option>8</option>
+                  <option>Non-compliant</option>
+                </select>
+              </label>
+              <label>CIDB grade
+                <input name="cidb_grade" type="text" placeholder="e.g. 4CE" />
+              </label>
+              <label>CIDB number
+                <input name="cidb_number" type="text" />
+              </label>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Banking (optional)</legend>
+            <div class="form-row">
+              <label>Bank
+                <input name="bank_name" type="text" />
+              </label>
+              <label>Account number
+                <input name="bank_account" type="text" autocomplete="off" />
+              </label>
+              <label>Branch code
+                <input name="bank_branch" type="text" />
+              </label>
+            </div>
+            <p class="fine">Banking details are only used to help fill tender forms. Never share them in public listings.</p>
+          </fieldset>
+          <p id="profile-msg" class="form-msg" role="status" hidden></p>
+          <button class="btn" type="submit">Save profile</button>
+        </form>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-foot">
+    <p><a href="index.html">Made Well</a> · <a href="tenders.html">Tenders</a> · <a href="privacy.html">Privacy</a></p>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="auth.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>

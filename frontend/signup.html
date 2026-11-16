@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Create account — Made Well</title>
+  <meta name="description" content="Create a free Made Well account to save government tenders and store your company profile." />
+  <link rel="icon" href="logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="auth-pages.css" />
+  <script src="track.js"></script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" width="57" height="84" /></a>
+    <nav>
+      <a class="hide-m" href="tenders.html">Tenders</a>
+      <a class="btn small" href="login.html">Sign in</a>
+    </nav>
+  </header>
+  <div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
+
+  <main class="auth-main">
+    <div class="auth-card">
+      <h1>Create account</h1>
+      <p class="sub">Free account for tender tracking and company details. Company registration is a separate service.</p>
+
+      <form id="form-signup" class="auth-form">
+        <label>Email
+          <input type="email" name="email" required autocomplete="email" placeholder="you@company.co.za" />
+        </label>
+        <label>Password
+          <input type="password" name="password" required autocomplete="new-password" minlength="8" placeholder="At least 8 characters" />
+        </label>
+        <label>Confirm password
+          <input type="password" name="confirm" required autocomplete="new-password" minlength="8" />
+        </label>
+        <p id="msg" class="form-msg" role="status" hidden></p>
+        <button class="btn" type="submit">Create account</button>
+      </form>
+
+      <p class="auth-switch">Already have an account? <a href="login.html">Sign in</a></p>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="auth.js"></script>
+  <script>
+    document.getElementById('form-signup').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const email = fd.get('email');
+      const password = fd.get('password');
+      const confirm = fd.get('confirm');
+      const msg = document.getElementById('msg');
+      const btn = e.target.querySelector('button[type=submit]');
+
+      if (password !== confirm) {
+        msg.hidden = false;
+        msg.className = 'form-msg err';
+        msg.textContent = 'Passwords do not match.';
+        return;
+      }
+      btn.disabled = true;
+      try {
+        const { data, error } = await MWAuth.signUp(email, password);
+        if (error) throw error;
+        msg.hidden = false;
+        msg.className = 'form-msg ok';
+        if (data.session) {
+          msg.textContent = 'Account created. Redirecting…';
+          setTimeout(() => (location.href = 'dashboard.html'), 800);
+        } else {
+          msg.textContent = 'Check your email to confirm your account, then sign in.';
+        }
+      } catch (err) {
+        msg.hidden = false;
+        msg.className = 'form-msg err';
+        msg.textContent = err.message || 'Could not create account';
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

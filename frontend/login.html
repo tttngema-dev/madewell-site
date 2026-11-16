@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sign in — Made Well</title>
+  <meta name="description" content="Sign in to your Made Well account to save tenders and manage your company profile." />
+  <link rel="icon" href="logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="auth-pages.css" />
+  <script src="track.js"></script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" width="57" height="84" /></a>
+    <nav>
+      <a class="hide-m" href="tenders.html">Tenders</a>
+      <a class="btn small" href="register.html">Register company</a>
+    </nav>
+  </header>
+  <div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
+
+  <main class="auth-main">
+    <div class="auth-card">
+      <h1>Sign in</h1>
+      <p class="sub">Save tenders, track deadlines, and keep your company details ready for submissions.</p>
+
+      <div class="tabs" role="tablist">
+        <button type="button" class="tab active" data-tab="password" role="tab" aria-selected="true">Password</button>
+        <button type="button" class="tab" data-tab="magic" role="tab" aria-selected="false">Magic link</button>
+      </div>
+
+      <form id="form-password" class="auth-form">
+        <label>Email
+          <input type="email" name="email" required autocomplete="email" placeholder="you@company.co.za" />
+        </label>
+        <label>Password
+          <input type="password" name="password" required autocomplete="current-password" minlength="6" />
+        </label>
+        <p id="msg-password" class="form-msg" role="status" hidden></p>
+        <button class="btn" type="submit">Sign in</button>
+      </form>
+
+      <form id="form-magic" class="auth-form" hidden>
+        <label>Email
+          <input type="email" name="email" required autocomplete="email" placeholder="you@company.co.za" />
+        </label>
+        <p class="fine">We will email you a one-time link. No password needed.</p>
+        <p id="msg-magic" class="form-msg" role="status" hidden></p>
+        <button class="btn" type="submit">Send magic link</button>
+      </form>
+
+      <p class="auth-switch">New here? <a href="signup.html">Create an account</a></p>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="auth.js"></script>
+  <script>
+    (function () {
+      const params = new URLSearchParams(location.search);
+      const next = params.get('next') || 'dashboard.html';
+
+      document.querySelectorAll('.tab').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.tab').forEach((b) => {
+            b.classList.toggle('active', b === btn);
+            b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
+          });
+          const tab = btn.dataset.tab;
+          document.getElementById('form-password').hidden = tab !== 'password';
+          document.getElementById('form-magic').hidden = tab !== 'magic';
+        });
+      });
+
+      function showMsg(id, text, ok) {
+        const el = document.getElementById(id);
+        el.hidden = false;
+        el.textContent = text;
+        el.className = 'form-msg ' + (ok ? 'ok' : 'err');
+      }
+
+      document.getElementById('form-password').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const btn = e.target.querySelector('button[type=submit]');
+        btn.disabled = true;
+        try {
+          const { error } = await MWAuth.signIn(fd.get('email'), fd.get('password'));
+          if (error) throw error;
+          location.href = next;
+        } catch (err) {
+          showMsg('msg-password', err.message || 'Sign in failed', false);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      document.getElementById('form-magic').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const btn = e.target.querySelector('button[type=submit]');
+        btn.disabled = true;
+        try {
+          const { error } = await MWAuth.signInMagic(fd.get('email'));
+          if (error) throw error;
+          showMsg('msg-magic', 'Check your email for the sign-in link.', true);
+        } catch (err) {
+          showMsg('msg-magic', err.message || 'Could not send link', false);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      MWAuth.getUser().then((u) => {
+        if (u) location.replace(next);
+      });
+    })();
+  </script>
+</body>
+</html>
