@@ -7,6 +7,8 @@ import { payfastRouter } from './payfast.js';
 import { remindersRouter } from './routes/reminders.js';
 import { trackRouter, adminRouter } from './routes/admin.js';
 import { beneficialRouter } from './routes/beneficial.js';
+import { tendersRouter } from './routes/tenders.js';
+import { accountRouter } from './routes/account.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -17,7 +19,7 @@ const allowed = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173')
   .map((s) => s.trim());
 
 app.use(cors({ origin: allowed, credentials: true }));
-app.use('/api/bo', express.json({ limit: '15mb' }), beneficialRouter); // bigger limit: ID copies + PDFs
+app.use('/api/bo', express.json({ limit: '15mb' }), beneficialRouter);
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/health', (_req, res) =>
@@ -30,6 +32,8 @@ app.use('/api', payfastRouter);
 app.use('/api', remindersRouter);
 app.use('/api', trackRouter);
 app.use('/api', adminRouter);
+app.use('/api', tendersRouter);
+app.use('/api', accountRouter);
 
 app.use((err, _req, res, _next) => {
   console.error(err);
