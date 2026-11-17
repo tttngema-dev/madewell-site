@@ -21,9 +21,10 @@ const hits = new Map(); // simple abuse limit: 12 submissions per IP per hour
 const limited = (ip) => { const n = Date.now(), h = (hits.get(ip) || []).filter((t) => n - t < 36e5); h.push(n); hits.set(ip, h); return h.length > 12; };
 
 function validate(b) {
-  const c = { name: str(b.company?.name), reg: str(b.company?.reg, 40), regDate: str(b.company?.regDate, 20), email: str(b.company?.email).toLowerCase(), phone: str(b.company?.phone, 30) };
+  const c = { name: str(b.company?.name), reg: str(b.company?.reg, 40), regDate: str(b.company?.regDate, 20), street: str(b.company?.street, 300), postal: str(b.company?.postal, 300), email: str(b.company?.email).toLowerCase(), phone: str(b.company?.phone, 30) };
   if (c.name.length < 2) return { error: 'Enter the company name.' };
   if (c.reg.length < 5) return { error: 'Enter the company registration number.' };
+  if (c.street.length < 8) return { error: 'Enter the company address.' };
   if (!isEmail(c.email)) return { error: 'Enter a valid email address.' };
   if (c.phone.replace(/\D/g, '').length < 9) return { error: 'Enter a valid mobile number.' };
   if (!Array.isArray(b.owners) || !b.owners.length || b.owners.length > 15) return { error: 'Add at least one owner.' };

@@ -130,13 +130,13 @@ export async function sendBoEmail(ref, d, files, pfId) {
   const missing = d.owners.filter((_, i) => !ids.some((f) => f.owner === i)).map((o) => o.name);
   const text = [
     `NEW BENEFICIAL OWNERSHIP FILING  ${ref}`, `PAYMENT: R500 received via PayFast${pfId ? ` (PayFast ID ${pfId})` : ''}`, '',
-    `COMPANY: ${c.name}`, `Registration no.: ${c.reg}`, `Company registered on: ${c.regDate || 'not given (documents say "Since incorporation")'}`,
+    `COMPANY: ${c.name}`, `Registration no.: ${c.reg}`, `Company registered on: ${c.regDate || 'not given'}`, `Street address: ${c.street || '-'}`, `Postal address: ${c.postal || '-'}`,
     `Contact: ${c.email} / ${c.phone}`, '', 'OWNERS',
     ...d.owners.flatMap((o, i) => [`${i + 1}. ${o.name}: ${o.pct}%`, `   ${o.idType === 'passport' ? 'Passport' : 'ID'}: ${o.id}`, `   ${o.email} / ${o.phone}`, `   ${o.address}`]), '',
     `AUTHORISED DIRECTOR (signs the mandate): ${d.auth.name} (${d.auth.id})`, `Signed electronically as: ${d.signature.name}`, '',
     missing.length ? `ID COPIES MISSING FOR: ${missing.join(', ')}. Ask the customer to send certified copies.` : 'Certified ID copies for every owner are attached.', '',
     'ATTACHED: ' + files.map((f) => f.name).join(', '), '',
-    'CHECK BEFORE FILING', '- Owners who hold under 5% may not need to appear on the beneficial ownership register.', '- Confirm the registration number and all ID numbers.', '',
+    'CHECK BEFORE FILING', '- Securities register: certificate numbers (001, 002...), number of securities and amount paid were filled in automatically, assuming 100 ordinary shares at R1 each, so each percentage equals that many shares. Confirm these with the customer.', '- Owners who hold under 5% may not need to appear on the beneficial ownership register.', '- Confirm the registration number and all ID numbers.', '',
     'NEXT STEPS', '1. Review the three drafted documents.', '2. File with CIPC.', '3. Email the customer the CIPC confirmation.',
   ].join('\n');
   const html = `<pre style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap">${esc(text)}</pre>`;
