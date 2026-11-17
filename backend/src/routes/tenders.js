@@ -1,13 +1,10 @@
 /**
- * Tender discovery – proxies National Treasury OCDS API
- * https://ocds-api.etenders.gov.za
+ * Tender discovery – National Treasury OCDS proxy with cache-first serving.
  *
- * Upstream quirks (Nov 2026):
- * - PageSize > 10 → frequent HTTP 500
- * - PageNumber > 1 → frequent HTTP 500 for many windows
- * - Many date ranges → 500
- * So we fan out across many short/known windows, page 1 only, PageSize 10,
- * and merge unique OCIDs up to a cap (~500).
+ * EasyTenders-style behaviour: keep a server-side cache and answer from it.
+ * Never block the user on a long multi-window crawl of the flaky upstream API.
+ *
+ * Upstream quirks: PageSize > 10 → 500; page > 1 often 500; many date ranges 500.
  */
 import { Router } from 'express';
 import https from 'https';
@@ -18,65 +15,60 @@ import { promisify } from 'util';
 const execFileAsync = promisify(execFile);
 const router = Router();
 const OCDS_BASE = 'https://ocds-api.etenders.gov.za/api/OCDSReleases';
-const CACHE_TTL_MS = 15 * 60 * 1000;
 
 const UPSTREAM_PAGE_SIZE = 10;
 const MAX_ITEMS = 500;
-const OVERALL_BUDGET_MS = 28000;
-const REQUEST_TIMEOUT_MS = 14000;
+const REQUEST_TIMEOUT_MS = 12000;
+const CACHE_TTL_MS = 30 * 60 * 1000; // serve cache for 30 minutes
+const STALE_OK_MS = 6 * 60 * 60 * 1000; // after that still serve stale while refreshing
+const FAST_BUDGET_MS = 9000; // cold fill must finish under this
+const EXPAND_BUDGET_MS = 45000;
 
 const SA_PROVINCES = [
-  'Eastern Cape',
-  'Free State',
-  'Gauteng',
-  'KwaZulu-Natal',
-  'KwaZulu Natal',
-  'Limpopo',
-  'Mpumalanga',
-  'Northern Cape',
-  'North West',
-  'Western Cape',
+  'Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu-Natal', 'KwaZulu Natal',
+  'Limpopo', 'Mpumalanga', 'Northern Cape', 'North West', 'Western Cape',
 ];
 
-/** Build a wide set of windows to maximise unique tenders despite page-2 failures. */
-function buildWindowList() {
-  const windows = [];
-  // Broad reliable ranges first
-  windows.push(
-    { from: '2024-09-01', to: '2024-12-31' },
-    { from: '2024-06-01', to: '2024-08-31' },
-    { from: '2024-03-01', to: '2024-05-31' },
-    { from: '2024-01-01', to: '2024-02-29' },
-    { from: '2023-10-01', to: '2023-12-31' },
-    { from: '2023-07-01', to: '2023-09-30' },
-    { from: '2023-04-01', to: '2023-06-30' },
-    { from: '2023-01-01', to: '2023-03-31' }
-  );
-  // Monthly slices 2024–2025 (some succeed when quarters fail)
-  for (const y of [2025, 2024, 2026]) {
+/** Windows ordered by observed reliability + likelihood of data. */
+const PRIMARY_WINDOWS = [
+  { from: '2024-09-01', to: '2024-12-31' },
+  { from: '2024-06-01', to: '2024-12-31' },
+  { from: '2024-01-01', to: '2024-12-31' },
+  { from: '2023-07-01', to: '2023-12-31' },
+];
+
+function monthlyWindows() {
+  const out = [];
+  for (const y of [2025, 2024, 2023, 2026]) {
     for (let m = 1; m <= 12; m++) {
       if (y === 2026 && m > 11) break;
       const from = `${y}-${String(m).padStart(2, '0')}-01`;
-      const lastDay = m === 12 ? 31 : new Date(Date.UTC(y, m, 0)).getUTCDate();
+      const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
       const to = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-      windows.push({ from, to });
+      out.push({ from, to });
     }
   }
-  // de-dupe
-  const seen = new Set();
-  return windows.filter((w) => {
-    const k = w.from + '|' + w.to;
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
+  return out;
 }
 
-const WINDOWS = buildWindowList();
-const cache = new Map();
+const EXPAND_WINDOWS = monthlyWindows();
 
-function cacheKey(params) {
-  return JSON.stringify(params);
+// ---- in-memory store (EasyTenders-style local mirror) ----
+const store = {
+  byOcid: new Map(),
+  updatedAt: 0,
+  refreshing: false,
+  lastError: null,
+  windowsOk: 0,
+  windowsTried: 0,
+};
+
+function cacheAge() {
+  return store.updatedAt ? Date.now() - store.updatedAt : Infinity;
+}
+
+function storeItems() {
+  return Array.from(store.byOcid.values());
 }
 
 function guessProvince(text) {
@@ -87,28 +79,22 @@ function guessProvince(text) {
       return p === 'KwaZulu Natal' ? 'KwaZulu-Natal' : p;
     }
   }
-  // Common buyer hints
   if (/\b(jhb|johannesburg|tshwane|pretoria|ekurhuleni|sedibeng)\b/i.test(text)) return 'Gauteng';
   if (/\b(cape town|stellenbosch|paarl|george)\b/i.test(text)) return 'Western Cape';
-  if (/\b(eThekwini|durban|pietermaritzburg|msunduzi)\b/i.test(text)) return 'KwaZulu-Natal';
-  if (/\b(buffalo city|nelson mandela|pe\b|gqeberha)\b/i.test(text)) return 'Eastern Cape';
+  if (/\b(ethekwini|durban|pietermaritzburg|msunduzi)\b/i.test(text)) return 'KwaZulu-Natal';
+  if (/\b(buffalo city|nelson mandela|gqeberha)\b/i.test(text)) return 'Eastern Cape';
   if (/\b(mangaung|bloemfontein)\b/i.test(text)) return 'Free State';
   return '';
 }
 
 function extractProvince(r, t, buyer) {
-  const addresses = [];
-  const parties = r.parties || [];
-  for (const p of parties) {
-    const addr = (p.address || {});
+  for (const p of r.parties || []) {
+    const addr = p.address || {};
     if (addr.region) return addr.region;
-    if (addr.locality) addresses.push(addr.locality);
-    if (addr.streetAddress) addresses.push(addr.streetAddress);
   }
   const pe = t.procuringEntity || {};
   if (pe.address && pe.address.region) return pe.address.region;
-  const blob = [buyer, t.title, t.description, ...addresses].filter(Boolean).join(' ');
-  return guessProvince(blob);
+  return guessProvince([buyer, t.title, t.description].filter(Boolean).join(' '));
 }
 
 function shapeRelease(r) {
@@ -135,9 +121,7 @@ function shapeRelease(r) {
   let isNew = false;
   if (published) {
     const pub = new Date(published);
-    if (!Number.isNaN(pub.getTime())) {
-      isNew = (now - pub) / 86400000 <= 7;
-    }
+    if (!Number.isNaN(pub.getTime())) isNew = (now - pub) / 86400000 <= 7;
   }
 
   return {
@@ -180,9 +164,7 @@ function httpsGetJson(urlStr, timeoutMs = REQUEST_TIMEOUT_MS) {
       (res) => {
         let data = '';
         res.setEncoding('utf8');
-        res.on('data', (chunk) => {
-          data += chunk;
-        });
+        res.on('data', (c) => (data += c));
         res.on('end', () => {
           if (res.statusCode < 200 || res.statusCode >= 300) {
             reject(new Error(`OCDS ${res.statusCode}`));
@@ -191,7 +173,7 @@ function httpsGetJson(urlStr, timeoutMs = REQUEST_TIMEOUT_MS) {
           try {
             resolve(JSON.parse(data));
           } catch {
-            reject(new Error('Invalid JSON from OCDS'));
+            reject(new Error('Invalid JSON'));
           }
         });
       }
@@ -199,7 +181,7 @@ function httpsGetJson(urlStr, timeoutMs = REQUEST_TIMEOUT_MS) {
     req.on('error', reject);
     req.on('timeout', () => {
       req.destroy();
-      reject(new Error('OCDS timeout'));
+      reject(new Error('timeout'));
     });
     req.end();
   });
@@ -210,14 +192,9 @@ async function curlGetJson(urlStr, timeoutMs = REQUEST_TIMEOUT_MS) {
   const { stdout } = await execFileAsync(
     'curl',
     [
-      '-sS',
-      '--fail',
-      '--max-time',
-      String(timeoutSec),
-      '-H',
-      'Accept: application/json',
-      '-A',
-      'MadeWellTenders/1.0 (+https://madewell.co.za)',
+      '-sS', '--fail', '--max-time', String(timeoutSec),
+      '-H', 'Accept: application/json',
+      '-A', 'MadeWellTenders/1.0 (+https://madewell.co.za)',
       urlStr,
     ],
     { maxBuffer: 12 * 1024 * 1024, timeout: timeoutMs + 1500 }
@@ -225,78 +202,144 @@ async function curlGetJson(urlStr, timeoutMs = REQUEST_TIMEOUT_MS) {
   return JSON.parse(stdout);
 }
 
-async function fetchPage(dateFrom, dateTo, page = 1) {
+async function fetchPage(dateFrom, dateTo) {
   const params = new URLSearchParams({
     dateFrom,
     dateTo,
-    PageNumber: String(page),
+    PageNumber: '1',
     PageSize: String(UPSTREAM_PAGE_SIZE),
   });
   const url = `${OCDS_BASE}?${params}`;
-  const ck = cacheKey({ dateFrom, dateTo, page });
-  const hit = cache.get(ck);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.data;
+  try {
+    return await curlGetJson(url);
+  } catch {
+    return await httpsGetJson(url);
+  }
+}
 
-  let lastErr;
-  for (let attempt = 0; attempt < 2; attempt++) {
+function mergeIntoStore(releases) {
+  let added = 0;
+  for (const r of releases || []) {
+    if (!r || !r.ocid) continue;
+    if (!store.byOcid.has(r.ocid)) {
+      store.byOcid.set(r.ocid, shapeRelease(r));
+      added += 1;
+    }
+    if (store.byOcid.size >= MAX_ITEMS) break;
+  }
+  if (added) store.updatedAt = Date.now();
+  return added;
+}
+
+/** Fast fill: a few primary windows only — aimed at < FAST_BUDGET_MS. */
+async function fastFill() {
+  const deadline = Date.now() + FAST_BUDGET_MS;
+  let tried = 0;
+  let ok = 0;
+  for (const w of PRIMARY_WINDOWS) {
+    if (Date.now() > deadline) break;
+    if (store.byOcid.size >= 80) break;
+    tried += 1;
     try {
-      let pkg;
-      try {
-        pkg = await curlGetJson(url);
-      } catch {
-        pkg = await httpsGetJson(url);
-      }
-      cache.set(ck, { at: Date.now(), data: pkg });
-      return pkg;
+      const pkg = await fetchPage(w.from, w.to);
+      const n = mergeIntoStore(pkg.releases || []);
+      if (n || (pkg.releases || []).length) ok += 1;
     } catch (err) {
-      lastErr = err;
-      await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+      store.lastError = err.message;
     }
   }
-  throw lastErr;
+  store.windowsTried += tried;
+  store.windowsOk += ok;
+  return store.byOcid.size;
 }
+
+/** Background expansion across monthly windows — does not block responses. */
+async function expandFill() {
+  if (store.refreshing) return;
+  store.refreshing = true;
+  const deadline = Date.now() + EXPAND_BUDGET_MS;
+  try {
+    for (const w of EXPAND_WINDOWS) {
+      if (Date.now() > deadline) break;
+      if (store.byOcid.size >= MAX_ITEMS) break;
+      store.windowsTried += 1;
+      try {
+        const pkg = await fetchPage(w.from, w.to);
+        const added = mergeIntoStore(pkg.releases || []);
+        if (added) store.windowsOk += 1;
+      } catch {
+        /* skip */
+      }
+      await new Promise((r) => setTimeout(r, 120));
+    }
+  } finally {
+    store.refreshing = false;
+  }
+}
+
+function filterSort(list, { q, statusFilter, category, sort }) {
+  let out = list;
+  if (q) {
+    const qq = q.toLowerCase();
+    out = out.filter(
+      (t) =>
+        (t.title && t.title.toLowerCase().includes(qq)) ||
+        (t.description && t.description.toLowerCase().includes(qq)) ||
+        (t.buyer && t.buyer.toLowerCase().includes(qq)) ||
+        (t.province && t.province.toLowerCase().includes(qq)) ||
+        (t.id && String(t.id).toLowerCase().includes(qq))
+    );
+  }
+  if (statusFilter === 'open') out = out.filter((t) => t.status !== 'closed');
+  else if (statusFilter === 'closed') out = out.filter((t) => t.status === 'closed');
+  if (category) out = out.filter((t) => (t.category || '').toLowerCase().includes(category));
+
+  if (sort === 'newest') {
+    out.sort((a, b) => (b.published || '').localeCompare(a.published || ''));
+  } else {
+    out.sort((a, b) => {
+      if (!a.closingDate) return 1;
+      if (!b.closingDate) return -1;
+      return a.closingDate.localeCompare(b.closingDate);
+    });
+  }
+  return out;
+}
+
+async function ensureStore() {
+  const age = cacheAge();
+  // Fresh enough — return immediately
+  if (store.byOcid.size > 0 && age < CACHE_TTL_MS) {
+    if (!store.refreshing && age > CACHE_TTL_MS / 2) {
+      // soft background refresh
+      expandFill().catch(() => {});
+    }
+    return 'fresh';
+  }
+  // Stale but usable — return stale, refresh in background
+  if (store.byOcid.size > 0 && age < STALE_OK_MS) {
+    if (!store.refreshing) expandFill().catch(() => {});
+    return 'stale';
+  }
+  // Empty or very old — do a fast fill, then expand in background
+  await fastFill();
+  if (store.byOcid.size > 0 && !store.refreshing) {
+    expandFill().catch(() => {});
+  }
+  return store.byOcid.size ? 'filled' : 'empty';
+}
+
+// Warm the cache shortly after process start (non-blocking)
+setTimeout(() => {
+  ensureStore().catch((e) => console.error('[tenders] warm', e.message));
+}, 1500);
 
 router.get('/tenders', async (req, res) => {
   const started = Date.now();
-  const deadline = started + OVERALL_BUDGET_MS;
-
   try {
-    const q = (req.query.q || '').trim().toLowerCase();
-    const statusFilter = (req.query.status || '').toLowerCase();
-    const category = (req.query.category || '').toLowerCase();
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const pageSize = Math.min(50, Math.max(5, parseInt(req.query.pageSize, 10) || 20));
-    const sort = req.query.sort || 'closing';
+    const status = await ensureStore();
 
-    const byOcid = new Map();
-    let windowsTried = 0;
-    let windowsOk = 0;
-
-    for (const w of WINDOWS) {
-      if (Date.now() > deadline) break;
-      if (byOcid.size >= MAX_ITEMS) break;
-      windowsTried += 1;
-      try {
-        // Only page 1 is reliable on this API right now
-        const pkg = await fetchPage(w.from, w.to, 1);
-        const releases = pkg.releases || [];
-        if (releases.length) {
-          windowsOk += 1;
-          for (const r of releases) {
-            if (r && r.ocid && !byOcid.has(r.ocid)) {
-              byOcid.set(r.ocid, shapeRelease(r));
-              if (byOcid.size >= MAX_ITEMS) break;
-            }
-          }
-        }
-      } catch (err) {
-        // skip failing window
-      }
-      // tiny pause to reduce 500 bursts
-      await new Promise((r) => setTimeout(r, 80));
-    }
-
-    if (!byOcid.size) {
+    if (!store.byOcid.size) {
       return res.status(502).json({
         ok: false,
         error: 'Could not load tenders from National Treasury right now. Try again shortly.',
@@ -304,32 +347,14 @@ router.get('/tenders', async (req, res) => {
       });
     }
 
-    let list = Array.from(byOcid.values());
+    const q = (req.query.q || '').trim();
+    const statusFilter = (req.query.status || '').toLowerCase();
+    const category = (req.query.category || '').toLowerCase();
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const pageSize = Math.min(50, Math.max(5, parseInt(req.query.pageSize, 10) || 20));
+    const sort = req.query.sort || 'closing';
 
-    if (q) {
-      list = list.filter(
-        (t) =>
-          (t.title && t.title.toLowerCase().includes(q)) ||
-          (t.description && t.description.toLowerCase().includes(q)) ||
-          (t.buyer && t.buyer.toLowerCase().includes(q)) ||
-          (t.province && t.province.toLowerCase().includes(q)) ||
-          (t.id && String(t.id).toLowerCase().includes(q))
-      );
-    }
-    if (statusFilter === 'open') list = list.filter((t) => t.status !== 'closed');
-    else if (statusFilter === 'closed') list = list.filter((t) => t.status === 'closed');
-    if (category) list = list.filter((t) => (t.category || '').toLowerCase().includes(category));
-
-    if (sort === 'newest') {
-      list.sort((a, b) => (b.published || '').localeCompare(a.published || ''));
-    } else {
-      list.sort((a, b) => {
-        if (!a.closingDate) return 1;
-        if (!b.closingDate) return -1;
-        return a.closingDate.localeCompare(b.closingDate);
-      });
-    }
-
+    const list = filterSort(storeItems(), { q, statusFilter, category, sort });
     const total = list.length;
     const start = (page - 1) * pageSize;
     const items = list.slice(start, start + pageSize);
@@ -339,15 +364,16 @@ router.get('/tenders', async (req, res) => {
       total,
       page,
       pageSize,
-      dateFrom: WINDOWS[0]?.from,
-      dateTo: WINDOWS[0]?.to,
-      windowsTried,
-      windowsOk,
+      cache: status,
+      cacheAgeSec: Math.round(cacheAge() / 1000),
+      storeSize: store.byOcid.size,
+      windowsTried: store.windowsTried,
+      windowsOk: store.windowsOk,
       ms: Date.now() - started,
-      partial: windowsOk < windowsTried,
+      partial: store.byOcid.size < 50,
       warning:
-        windowsOk < windowsTried
-          ? 'Some National Treasury date ranges could not be loaded; results may be incomplete.'
+        store.byOcid.size < 50
+          ? 'Still building the tender cache from National Treasury — refresh in a minute for more results.'
           : undefined,
       items,
       source: 'National Treasury eTenders OCDS API',
@@ -355,6 +381,20 @@ router.get('/tenders', async (req, res) => {
     });
   } catch (err) {
     console.error('[tenders]', err.message);
+    // Last resort: if we have any cache, serve it
+    if (store.byOcid.size) {
+      const items = storeItems().slice(0, 20);
+      return res.json({
+        ok: true,
+        total: store.byOcid.size,
+        page: 1,
+        pageSize: 20,
+        cache: 'error-fallback',
+        items,
+        ms: Date.now() - started,
+        source: 'National Treasury eTenders OCDS API',
+      });
+    }
     res.status(502).json({
       ok: false,
       error: 'Could not load tenders from National Treasury right now. Try again shortly.',
@@ -365,28 +405,12 @@ router.get('/tenders', async (req, res) => {
 
 router.get('/tenders/:ocid', async (req, res) => {
   try {
+    await ensureStore();
     const ocid = decodeURIComponent(req.params.ocid);
-    const deadline = Date.now() + OVERALL_BUDGET_MS;
-    let found = null;
-
-    for (const w of WINDOWS) {
-      if (Date.now() > deadline) break;
-      try {
-        const pkg = await fetchPage(w.from, w.to, 1);
-        const match = (pkg.releases || []).find((r) => r.ocid === ocid);
-        if (match) {
-          found = shapeRelease(match);
-          break;
-        }
-      } catch {
-        /* continue */
-      }
-    }
-
+    const found = store.byOcid.get(ocid);
     if (!found) return res.status(404).json({ ok: false, error: 'Tender not found' });
     res.json({ ok: true, item: found });
   } catch (err) {
-    console.error('[tenders/:ocid]', err.message);
     res.status(502).json({ ok: false, error: 'Could not load tender detail' });
   }
 });

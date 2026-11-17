@@ -55,7 +55,7 @@
     if (state.category) params.set('category', state.category);
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 25000);
+      const timer = setTimeout(() => controller.abort(), 35000);
       let res;
       try {
         res = await fetch(API_BASE + '/api/tenders?' + params, { signal: controller.signal });
@@ -71,13 +71,15 @@
         ? 'No tenders matched your filters in the current window.'
         : 'Showing ' + state.items.length + ' of ' + data.total + ' tenders · published ' + data.dateFrom + ' – ' + data.dateTo;
       if (data.partial && data.total > 0) {
-        metaText += ' · some National Treasury ranges were unavailable';
+        metaText += ' · cache still growing — refresh shortly for more';
+      } else if (data.storeSize) {
+        metaText += ' · ' + data.storeSize + ' in cache';
       }
       meta.textContent = metaText;
       renderPager();
     } catch (err) {
       const msg = err.name === 'AbortError'
-        ? 'Tenders are taking too long to load. The National Treasury feed may be slow — please try again in a minute.'
+        ? 'First load is building a tender cache from National Treasury. Wait a few seconds and tap Try again — later loads are instant.'
         : (err.message || 'Could not load tenders.');
       results.innerHTML = '<p class="error">' + esc(msg) + '</p><p class="fine" style="text-align:center"><button type="button" class="btn small" id="retry-tenders">Try again</button></p>';
       meta.textContent = '';
