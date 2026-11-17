@@ -99,7 +99,21 @@
 .detail-panel .actions .btn.ghost:hover { border-color: var(--gold); color: var(--bulb); }
 .detail-panel .actions .btn:disabled { opacity: 0.55; cursor: not-allowed; }
 @media (max-width: 640px) {
-  .tenders-hero { padding-top: 2rem; }
-  .detail-panel { width: 100%; }
+  .tenders-main { padding: 0 1rem 3rem; }
+  .tenders-hero { padding-top: 1.5rem; padding-bottom: 1rem; }
+  .tenders-hero .lead { font-size: 1.05rem; }
+  .tenders-toolbar { padding: 1rem; border-radius: 12px; }
+  .search-row { flex-direction: column; }
+  .search-row input[type="search"] { min-width: 0; width: 100%; }
+  .search-row .btn { width: 100%; text-align: center; }
+  .filters-row { flex-direction: column; gap: 0.75rem; }
+  .filters-row select { width: 100%; min-width: 0; }
+  .tender-card { padding: 1rem 1.1rem; }
+  .tender-card h3 { font-size: 1.08rem; }
+  .tender-card .meta-line { flex-direction: column; gap: 0.35rem; }
+  .pager { gap: 0.75rem; flex-wrap: wrap; }
+  .detail-panel { width: 100%; padding: 1.15rem 1.15rem 2.5rem; }
   .detail-panel .d-grid div { grid-template-columns: 1fr; }
+  .detail-panel .actions { flex-direction: column; }
+  .detail-panel .actions .btn { width: 100%; text-align: center; }
 }

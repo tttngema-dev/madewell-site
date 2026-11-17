@@ -60,9 +60,13 @@
       state.total = data.total;
       state.items = data.items || [];
       renderList();
-      meta.textContent = data.total === 0
+      let metaText = data.total === 0
         ? 'No tenders matched your filters in the current window.'
         : 'Showing ' + state.items.length + ' of ' + data.total + ' tenders · published ' + data.dateFrom + ' – ' + data.dateTo;
+      if (data.partial && data.total > 0) {
+        metaText += ' · some National Treasury ranges were unavailable';
+      }
+      meta.textContent = metaText;
       renderPager();
     } catch (err) {
       results.innerHTML = '<p class="error">' + esc(err.message || 'Could not load tenders.') + '</p>';

@@ -7,7 +7,7 @@
   <link rel="icon" href="logo.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="dashboard.css" />
   <script src="track.js"></script>
@@ -16,12 +16,16 @@
   <header class="top">
     <a class="brand" href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" width="57" height="84" /></a>
     <nav>
-      <a class="hide-m" href="tenders.html">Tenders</a>
-      <a class="hide-m" href="dashboard.html" aria-current="page">Dashboard</a>
+      <a href="tenders.html">Tenders</a>
+      <a href="dashboard.html" aria-current="page">Dashboard</a>
       <span class="nav-email hide-m" data-auth-email></span>
       <button type="button" class="btn small ghost-btn" id="btn-signout">Sign out</button>
     </nav>
   </header>
+  <nav class="svc-bar tenders-bar" aria-label="Tenders navigation">
+    <a href="tenders.html">Browse tenders</a>
+    <a href="dashboard.html" class="on" aria-current="page">Dashboard</a>
+  </nav>
   <div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
 
   <main class="dash-main">

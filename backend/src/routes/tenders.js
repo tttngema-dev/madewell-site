@@ -1,6 +1,9 @@
 /**
  * Tender discovery – proxies National Treasury OCDS API
  * https://ocds-api.etenders.gov.za
+ *
+ * The upstream API is unreliable for many date windows (returns HTTP 500).
+ * We fetch in short date chunks, skip failing windows, and aggregate what we can.
  */
 import { Router } from 'express';
 
@@ -14,25 +17,51 @@ function intFromEnv(name, fallback, min, max) {
   return Math.min(max, Math.max(min, Math.trunc(n)));
 }
 
-// Safer default: 120 days x 20 pages x 50 = up to ~1000 upstream records per cold load.
-// Keep PageSize at 50: the eTenders OCDS endpoint is more reliable than with 100.
-const LOOKBACK_DAYS = intFromEnv('TENDER_LOOKBACK_DAYS', 120, 1, 3650);
-const MAX_PAGES = intFromEnv('TENDER_MAX_PAGES', 20, 1, 40);
+// Wider lookback so we can still surface tenders when recent months 500.
+const LOOKBACK_DAYS = intFromEnv('TENDER_LOOKBACK_DAYS', 400, 30, 3650);
+const MAX_PAGES_PER_WINDOW = intFromEnv('TENDER_MAX_PAGES', 8, 1, 20);
 const UPSTREAM_PAGE_SIZE = 50;
-const FETCH_RETRIES = intFromEnv('TENDER_FETCH_RETRIES', 2, 0, 5);
+const FETCH_RETRIES = intFromEnv('TENDER_FETCH_RETRIES', 1, 0, 5);
+// Wider windows are more reliable on the National Treasury API than very short ones.
+const WINDOW_DAYS = intFromEnv('TENDER_WINDOW_DAYS', 45, 14, 90);
 
 const cache = new Map();
 
 function cacheKey(params) {
   return JSON.stringify(params);
 }
+
+function isoDate(d) {
+  return d.toISOString().slice(0, 10);
+}
+
 function daysAgo(n) {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - n);
-  return d.toISOString().slice(0, 10);
+  return isoDate(d);
 }
+
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return isoDate(new Date());
+}
+
+/** Build non-overlapping [from, to] windows covering [start, end], newest first. */
+function buildWindows(dateFrom, dateTo, windowDays = WINDOW_DAYS) {
+  const windows = [];
+  const end = new Date(dateTo + 'T00:00:00Z');
+  const start = new Date(dateFrom + 'T00:00:00Z');
+  if (end < start) return windows;
+
+  let cursorEnd = end;
+  while (cursorEnd >= start) {
+    const cursorStart = new Date(cursorEnd);
+    cursorStart.setUTCDate(cursorStart.getUTCDate() - (windowDays - 1));
+    if (cursorStart < start) cursorStart.setTime(start.getTime());
+    windows.push({ from: isoDate(cursorStart), to: isoDate(cursorEnd) });
+    cursorEnd = new Date(cursorStart);
+    cursorEnd.setUTCDate(cursorEnd.getUTCDate() - 1);
+  }
+  return windows;
 }
 
 function shapeRelease(r) {
@@ -85,7 +114,7 @@ async function fetchOcds({ dateFrom, dateTo, page = 1, pageSize = UPSTREAM_PAGE_
   const url = `${OCDS_BASE}?${params}`;
   const res = await fetch(url, {
     headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(25000),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -102,11 +131,42 @@ async function fetchOcdsWithRetry(args) {
     } catch (err) {
       lastErr = err;
       if (attempt < FETCH_RETRIES) {
-        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
       }
     }
   }
   throw lastErr;
+}
+
+/** Fetch all pages for one date window; returns releases or empty on hard failure. */
+async function fetchWindow(dateFrom, dateTo) {
+  const collected = [];
+  let failed = false;
+  let lastError = null;
+
+  for (let p = 1; p <= MAX_PAGES_PER_WINDOW; p++) {
+    const ck = cacheKey({ dateFrom, dateTo, page: p, pageSize: UPSTREAM_PAGE_SIZE });
+    let pkg;
+    const hit = cache.get(ck);
+    if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
+      pkg = hit.data;
+    } else {
+      try {
+        pkg = await fetchOcdsWithRetry({ dateFrom, dateTo, page: p, pageSize: UPSTREAM_PAGE_SIZE });
+        cache.set(ck, { at: Date.now(), data: pkg });
+      } catch (err) {
+        failed = true;
+        lastError = err;
+        console.error(`[tenders] window ${dateFrom}→${dateTo} page ${p}:`, err.message);
+        break;
+      }
+    }
+    const releases = pkg.releases || [];
+    collected.push(...releases);
+    if (releases.length < UPSTREAM_PAGE_SIZE) break;
+  }
+
+  return { releases: collected, failed, lastError };
 }
 
 router.get('/tenders', async (req, res) => {
@@ -124,35 +184,71 @@ router.get('/tenders', async (req, res) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) dateFrom = daysAgo(LOOKBACK_DAYS);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) dateTo = today();
 
-    const all = [];
-    let pageError = null;
-    let loadedPages = 0;
-    for (let p = 1; p <= MAX_PAGES; p++) {
-      const ck = cacheKey({ dateFrom, dateTo, page: p, pageSize: UPSTREAM_PAGE_SIZE });
-      let pkg;
-      const hit = cache.get(ck);
-      if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
-        pkg = hit.data;
+    const windows = buildWindows(dateFrom, dateTo, WINDOW_DAYS);
+    const byOcid = new Map();
+    let windowsTried = 0;
+    let windowsOk = 0;
+    let windowsFailed = 0;
+    let lastError = null;
+
+    // Cap total windows so cold start stays within reasonable time (~30s).
+    const maxWindows = intFromEnv('TENDER_MAX_WINDOWS', 24, 4, 60);
+
+    for (const w of windows.slice(0, maxWindows)) {
+      windowsTried += 1;
+      const { releases, failed, lastError: err } = await fetchWindow(w.from, w.to);
+      if (failed) {
+        windowsFailed += 1;
+        lastError = err;
       } else {
-        try {
-          pkg = await fetchOcdsWithRetry({ dateFrom, dateTo, page: p, pageSize: UPSTREAM_PAGE_SIZE });
-          cache.set(ck, { at: Date.now(), data: pkg });
-        } catch (err) {
-          pageError = err;
-          console.error(`[tenders] page ${p}:`, err.message);
-          break;
+        windowsOk += 1;
+      }
+      for (const r of releases) {
+        if (r && r.ocid && !byOcid.has(r.ocid)) {
+          byOcid.set(r.ocid, shapeRelease(r));
         }
       }
-      const releases = pkg.releases || [];
-      loadedPages += 1;
-      if (!releases.length) break;
-      for (const r of releases) all.push(shapeRelease(r));
-      if (releases.length < UPSTREAM_PAGE_SIZE) break;
+      // Soft early stop if we already have a healthy set of open tenders.
+      if (byOcid.size >= 400 && windowsOk >= 3) break;
     }
 
-    if (!all.length && pageError) throw pageError;
+    // Fallback: if recent windows all failed, try a few known historical ranges
+    // that the National Treasury API often still serves (broader quarters work better).
+    if (byOcid.size === 0) {
+      const fallbacks = [
+        { from: '2024-09-01', to: '2024-12-31' },
+        { from: '2024-06-01', to: '2024-08-31' },
+        { from: '2024-03-01', to: '2024-05-31' },
+        { from: '2023-10-01', to: '2023-12-31' },
+      ];
+      for (const w of fallbacks) {
+        const { releases, failed, lastError: err } = await fetchWindow(w.from, w.to);
+        if (failed) {
+          windowsFailed += 1;
+          lastError = err;
+        } else {
+          windowsOk += 1;
+        }
+        windowsTried += 1;
+        for (const r of releases) {
+          if (r && r.ocid && !byOcid.has(r.ocid)) {
+            byOcid.set(r.ocid, shapeRelease(r));
+          }
+        }
+        if (byOcid.size > 0) break;
+      }
+    }
 
-    let list = all;
+    if (!byOcid.size && lastError) {
+      console.error('[tenders] all windows failed:', lastError.message);
+      return res.status(502).json({
+        ok: false,
+        error: 'Could not load tenders from National Treasury right now. Try again shortly.',
+      });
+    }
+
+    let list = Array.from(byOcid.values());
+
     if (q) {
       list = list.filter(
         (t) =>
@@ -180,6 +276,7 @@ router.get('/tenders', async (req, res) => {
     const total = list.length;
     const start = (page - 1) * pageSize;
     const items = list.slice(start, start + pageSize);
+    const partial = windowsFailed > 0;
 
     res.json({
       ok: true,
@@ -188,9 +285,13 @@ router.get('/tenders', async (req, res) => {
       pageSize,
       dateFrom,
       dateTo,
-      loadedPages,
-      partial: Boolean(pageError),
-      warning: pageError ? 'Some tender pages could not be loaded; results may be incomplete.' : undefined,
+      windowsTried,
+      windowsOk,
+      windowsFailed,
+      partial,
+      warning: partial
+        ? 'Some National Treasury date ranges could not be loaded; results may be incomplete.'
+        : undefined,
       items,
       source: 'National Treasury eTenders OCDS API',
       license: 'Open Data Commons PDDL',
@@ -209,17 +310,34 @@ router.get('/tenders/:ocid', async (req, res) => {
     const ocid = decodeURIComponent(req.params.ocid);
     const dateFrom = daysAgo(LOOKBACK_DAYS);
     const dateTo = today();
+    const windows = buildWindows(dateFrom, dateTo, WINDOW_DAYS);
     let found = null;
-    for (let p = 1; p <= MAX_PAGES && !found; p++) {
-      const pkg = await fetchOcdsWithRetry({ dateFrom, dateTo, page: p, pageSize: UPSTREAM_PAGE_SIZE });
-      const releases = pkg.releases || [];
+
+    for (const w of windows.slice(0, 30)) {
+      const { releases } = await fetchWindow(w.from, w.to);
       const match = releases.find((r) => r.ocid === ocid);
       if (match) {
         found = shapeRelease(match);
         break;
       }
-      if (releases.length < UPSTREAM_PAGE_SIZE) break;
     }
+
+    if (!found) {
+      // Last-chance historical windows
+      for (const w of [
+        { from: '2024-09-01', to: '2024-12-31' },
+        { from: '2024-07-01', to: '2024-09-30' },
+        { from: '2025-09-01', to: '2025-09-30' },
+      ]) {
+        const { releases } = await fetchWindow(w.from, w.to);
+        const match = releases.find((r) => r.ocid === ocid);
+        if (match) {
+          found = shapeRelease(match);
+          break;
+        }
+      }
+    }
+
     if (!found) return res.status(404).json({ ok: false, error: 'Tender not found in recent releases' });
     res.json({ ok: true, item: found });
   } catch (err) {
