@@ -117,3 +117,14 @@
   .detail-panel .actions { flex-direction: column; }
   .detail-panel .actions .btn { width: 100%; text-align: center; }
 }
+
+.tender-card .badges { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+.badge.new {
+  background: rgba(61, 139, 253, 0.22); color: #9ec5ff;
+  border: 1px solid rgba(61, 139, 253, 0.45);
+}
+.tender-card .card-desc {
+  color: var(--soft); font-size: 0.95rem; line-height: 1.45; margin: 0;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.tender-card .province { color: var(--bulb); font-weight: 500; }

@@ -6,7 +6,7 @@
     String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   const state = {
-    page: 1, pageSize: 15, total: 0, q: '', status: 'open', category: '', sort: 'closing', items: [],
+    page: 1, pageSize: 20, total: 0, q: '', status: 'all', category: '', sort: 'closing', items: [],
   };
 
   function daysUntil(iso) {
@@ -54,8 +54,15 @@
     if (state.q) params.set('q', state.q);
     if (state.category) params.set('category', state.category);
     try {
-      const res = await fetch(API_BASE + '/api/tenders?' + params);
-      const data = await res.json();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 25000);
+      let res;
+      try {
+        res = await fetch(API_BASE + '/api/tenders?' + params, { signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+      const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error(data.error || 'Request failed');
       state.total = data.total;
       state.items = data.items || [];
@@ -69,16 +76,28 @@
       meta.textContent = metaText;
       renderPager();
     } catch (err) {
-      results.innerHTML = '<p class="error">' + esc(err.message || 'Could not load tenders.') + '</p>';
+      const msg = err.name === 'AbortError'
+        ? 'Tenders are taking too long to load. The National Treasury feed may be slow — please try again in a minute.'
+        : (err.message || 'Could not load tenders.');
+      results.innerHTML = '<p class="error">' + esc(msg) + '</p><p class="fine" style="text-align:center"><button type="button" class="btn small" id="retry-tenders">Try again</button></p>';
       meta.textContent = '';
       $('#pager').hidden = true;
+      const retry = document.getElementById('retry-tenders');
+      if (retry) retry.addEventListener('click', () => load());
     }
+  }
+
+  function truncate(s, n) {
+    s = String(s || '').trim();
+    if (!s) return '';
+    if (s.length <= n) return s;
+    return s.slice(0, n).replace(/\s+\S*$/, '') + '…';
   }
 
   function renderList() {
     const results = $('#results');
     if (!state.items.length) {
-      results.innerHTML = '<p class="empty">No tenders found. Try a broader search or “All” status.</p>';
+      results.innerHTML = '<p class="empty">No tenders found. Try “All” status, clear the search, or a broader keyword.</p>';
       return;
     }
     results.innerHTML = '';
@@ -87,13 +106,17 @@
       btn.type = 'button';
       btn.className = 'tender-card';
       const statusBadge = t.status === 'closed' ? '<span class="badge closed">Closed</span>' : '<span class="badge open">Open</span>';
+      const newBadge = t.isNew ? '<span class="badge new">New</span>' : '';
       const catBadge = t.category ? '<span class="badge cat">' + esc(t.category) + '</span>' : '';
       const val = formatValue(t.valueZar, t.currency);
       const closeCls = closingClass(t.closingDate);
+      const desc = truncate(t.description, 180);
+      const province = t.province ? esc(t.province) : '';
       btn.innerHTML =
-        '<div class="row-top"><span class="ref">' + esc(t.id || t.ocid) + '</span><span>' + statusBadge + catBadge + '</span></div>' +
+        '<div class="row-top"><span class="ref">' + esc(t.id || t.ocid) + '</span><span class="badges">' + newBadge + statusBadge + catBadge + '</span></div>' +
         '<h3>' + esc(t.title) + '</h3>' +
-        '<p class="buyer">' + esc(t.buyer || 'Buyer not listed') + '</p>' +
+        (desc ? '<p class="card-desc">' + esc(desc) + '</p>' : '') +
+        '<p class="buyer">' + esc(t.buyer || 'Buyer not listed') + (province ? ' · <span class="province">' + province + '</span>' : '') + '</p>' +
         '<div class="meta-line">' +
         '<span class="closing ' + closeCls + '"><strong>' + esc(closingLabel(t.closingDate)) + '</strong> · ' + esc(formatDate(t.closingDate)) + '</span>' +
         (val ? '<span>Est. ' + esc(val) + '</span>' : '') +
@@ -130,6 +153,7 @@
       '<div class="d-grid">' +
       '<div><span class="lab">Status</span><span>' + esc(t.status === 'closed' ? 'Closed' : 'Open') + '</span></div>' +
       '<div><span class="lab">Category</span><span>' + esc(t.category || '—') + '</span></div>' +
+      '<div><span class="lab">Province</span><span>' + esc(t.province || '—') + '</span></div>' +
       '<div><span class="lab">Method</span><span>' + esc(t.method || '—') + '</span></div>' +
       '<div><span class="lab">Published</span><span>' + esc(formatDate(t.published)) + '</span></div>' +
       '<div><span class="lab">Closes</span><span>' + esc(formatDate(t.closingDate)) + ' · ' + esc(closingLabel(t.closingDate)) + '</span></div>' +
@@ -187,11 +211,23 @@
     document.body.style.overflow = '';
   }
 
+  let searchTimer = null;
   $('#search-form').addEventListener('submit', (e) => {
     e.preventDefault();
+    if (searchTimer) clearTimeout(searchTimer);
     state.q = $('#q').value.trim();
     state.page = 1;
     load();
+  });
+  $('#q').addEventListener('input', () => {
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      const next = $('#q').value.trim();
+      if (next === state.q) return;
+      state.q = next;
+      state.page = 1;
+      load();
+    }, 350);
   });
   ['status', 'category', 'sort'].forEach((id) => {
     $('#' + id).addEventListener('change', () => {

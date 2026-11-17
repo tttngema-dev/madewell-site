@@ -2,14 +2,12 @@
  * Tender discovery – proxies National Treasury OCDS API
  * https://ocds-api.etenders.gov.za
  *
- * Critical constraints of the upstream API (observed Nov 2026):
- * - PageSize >= 20 often returns HTTP 500 → use PageSize 10
- * - Many date ranges return 500 → prefer known-good windows
- * - Parallel / rapid requests trigger 500s → sequential + small delays
- * - Node undici fetch is unreliable → prefer curl, fallback to https
- *
- * Strategy: try a short list of known-good windows, stop as soon as we have
- * enough rows, and enforce an overall time budget so the client never hangs.
+ * Upstream quirks (Nov 2026):
+ * - PageSize > 10 → frequent HTTP 500
+ * - PageNumber > 1 → frequent HTTP 500 for many windows
+ * - Many date ranges → 500
+ * So we fan out across many short/known windows, page 1 only, PageSize 10,
+ * and merge unique OCIDs up to a cap (~500).
  */
 import { Router } from 'express';
 import https from 'https';
@@ -20,29 +18,97 @@ import { promisify } from 'util';
 const execFileAsync = promisify(execFile);
 const router = Router();
 const OCDS_BASE = 'https://ocds-api.etenders.gov.za/api/OCDSReleases';
-const CACHE_TTL_MS = 10 * 60 * 1000; // 10 min in-process cache
+const CACHE_TTL_MS = 15 * 60 * 1000;
 
-const UPSTREAM_PAGE_SIZE = 10; // MUST stay <= 10 — larger sizes 500 on this API
-const MAX_PAGES_PER_WINDOW = 8;
-const OVERALL_BUDGET_MS = 18000; // hard stop so clients don't spin forever
-const REQUEST_TIMEOUT_MS = 12000;
+const UPSTREAM_PAGE_SIZE = 10;
+const MAX_ITEMS = 500;
+const OVERALL_BUDGET_MS = 28000;
+const REQUEST_TIMEOUT_MS = 14000;
 
-// Windows that currently respond with 200 + data (re-order if needed).
-const RELIABLE_WINDOWS = [
-  { from: '2024-09-01', to: '2024-12-31' },
-  { from: '2024-06-01', to: '2024-12-31' },
-  { from: '2024-01-01', to: '2024-12-31' },
-  { from: '2023-07-01', to: '2023-12-31' },
+const SA_PROVINCES = [
+  'Eastern Cape',
+  'Free State',
+  'Gauteng',
+  'KwaZulu-Natal',
+  'KwaZulu Natal',
+  'Limpopo',
+  'Mpumalanga',
+  'Northern Cape',
+  'North West',
+  'Western Cape',
 ];
 
+/** Build a wide set of windows to maximise unique tenders despite page-2 failures. */
+function buildWindowList() {
+  const windows = [];
+  // Broad reliable ranges first
+  windows.push(
+    { from: '2024-09-01', to: '2024-12-31' },
+    { from: '2024-06-01', to: '2024-08-31' },
+    { from: '2024-03-01', to: '2024-05-31' },
+    { from: '2024-01-01', to: '2024-02-29' },
+    { from: '2023-10-01', to: '2023-12-31' },
+    { from: '2023-07-01', to: '2023-09-30' },
+    { from: '2023-04-01', to: '2023-06-30' },
+    { from: '2023-01-01', to: '2023-03-31' }
+  );
+  // Monthly slices 2024–2025 (some succeed when quarters fail)
+  for (const y of [2025, 2024, 2026]) {
+    for (let m = 1; m <= 12; m++) {
+      if (y === 2026 && m > 11) break;
+      const from = `${y}-${String(m).padStart(2, '0')}-01`;
+      const lastDay = m === 12 ? 31 : new Date(Date.UTC(y, m, 0)).getUTCDate();
+      const to = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      windows.push({ from, to });
+    }
+  }
+  // de-dupe
+  const seen = new Set();
+  return windows.filter((w) => {
+    const k = w.from + '|' + w.to;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+const WINDOWS = buildWindowList();
 const cache = new Map();
 
 function cacheKey(params) {
   return JSON.stringify(params);
 }
 
-function isoDate(d) {
-  return d.toISOString().slice(0, 10);
+function guessProvince(text) {
+  if (!text) return '';
+  const lower = text.toLowerCase();
+  for (const p of SA_PROVINCES) {
+    if (lower.includes(p.toLowerCase())) {
+      return p === 'KwaZulu Natal' ? 'KwaZulu-Natal' : p;
+    }
+  }
+  // Common buyer hints
+  if (/\b(jhb|johannesburg|tshwane|pretoria|ekurhuleni|sedibeng)\b/i.test(text)) return 'Gauteng';
+  if (/\b(cape town|stellenbosch|paarl|george)\b/i.test(text)) return 'Western Cape';
+  if (/\b(eThekwini|durban|pietermaritzburg|msunduzi)\b/i.test(text)) return 'KwaZulu-Natal';
+  if (/\b(buffalo city|nelson mandela|pe\b|gqeberha)\b/i.test(text)) return 'Eastern Cape';
+  if (/\b(mangaung|bloemfontein)\b/i.test(text)) return 'Free State';
+  return '';
+}
+
+function extractProvince(r, t, buyer) {
+  const addresses = [];
+  const parties = r.parties || [];
+  for (const p of parties) {
+    const addr = (p.address || {});
+    if (addr.region) return addr.region;
+    if (addr.locality) addresses.push(addr.locality);
+    if (addr.streetAddress) addresses.push(addr.streetAddress);
+  }
+  const pe = t.procuringEntity || {};
+  if (pe.address && pe.address.region) return pe.address.region;
+  const blob = [buyer, t.title, t.description, ...addresses].filter(Boolean).join(' ');
+  return guessProvince(blob);
 }
 
 function shapeRelease(r) {
@@ -65,16 +131,27 @@ function shapeRelease(r) {
   let status = (t.status || '').toLowerCase() || 'active';
   if (end && end < now) status = 'closed';
 
+  const published = r.date || period.startDate || null;
+  let isNew = false;
+  if (published) {
+    const pub = new Date(published);
+    if (!Number.isNaN(pub.getTime())) {
+      isNew = (now - pub) / 86400000 <= 7;
+    }
+  }
+
   return {
     ocid: r.ocid,
     id: t.id || r.ocid,
     title: t.title || 'Untitled tender',
     description: t.description || '',
     buyer,
+    province: extractProvince(r, t, buyer),
     category: t.mainProcurementCategory || (t.additionalProcurementCategories || [])[0] || '',
     method: t.procurementMethodDetails || t.procurementMethod || '',
     status,
-    published: r.date || period.startDate || null,
+    published,
+    isNew,
     openingDate: period.startDate || null,
     closingDate: period.endDate || null,
     valueZar: typeof value.amount === 'number' ? value.amount : null,
@@ -148,7 +225,7 @@ async function curlGetJson(urlStr, timeoutMs = REQUEST_TIMEOUT_MS) {
   return JSON.parse(stdout);
 }
 
-async function fetchOcdsPage(dateFrom, dateTo, page) {
+async function fetchPage(dateFrom, dateTo, page = 1) {
   const params = new URLSearchParams({
     dateFrom,
     dateTo,
@@ -156,7 +233,7 @@ async function fetchOcdsPage(dateFrom, dateTo, page) {
     PageSize: String(UPSTREAM_PAGE_SIZE),
   });
   const url = `${OCDS_BASE}?${params}`;
-  const ck = cacheKey({ dateFrom, dateTo, page, pageSize: UPSTREAM_PAGE_SIZE });
+  const ck = cacheKey({ dateFrom, dateTo, page });
   const hit = cache.get(ck);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.data;
 
@@ -173,33 +250,10 @@ async function fetchOcdsPage(dateFrom, dateTo, page) {
       return pkg;
     } catch (err) {
       lastErr = err;
-      await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+      await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
     }
   }
   throw lastErr;
-}
-
-async function fetchWindow(dateFrom, dateTo, deadline) {
-  const collected = [];
-  for (let p = 1; p <= MAX_PAGES_PER_WINDOW; p++) {
-    if (Date.now() > deadline) break;
-    try {
-      const pkg = await fetchOcdsPage(dateFrom, dateTo, p);
-      const releases = pkg.releases || [];
-      collected.push(...releases);
-      if (releases.length < UPSTREAM_PAGE_SIZE) break;
-    } catch (err) {
-      console.error(`[tenders] ${dateFrom}→${dateTo} p${p}:`, err.message);
-      break;
-    }
-  }
-  return collected;
-}
-
-function mergeReleases(byOcid, releases) {
-  for (const r of releases) {
-    if (r && r.ocid && !byOcid.has(r.ocid)) byOcid.set(r.ocid, shapeRelease(r));
-  }
 }
 
 router.get('/tenders', async (req, res) => {
@@ -218,20 +272,31 @@ router.get('/tenders', async (req, res) => {
     let windowsTried = 0;
     let windowsOk = 0;
 
-    for (const w of RELIABLE_WINDOWS) {
+    for (const w of WINDOWS) {
       if (Date.now() > deadline) break;
+      if (byOcid.size >= MAX_ITEMS) break;
       windowsTried += 1;
-      const releases = await fetchWindow(w.from, w.to, deadline);
-      if (releases.length) {
-        windowsOk += 1;
-        mergeReleases(byOcid, releases);
+      try {
+        // Only page 1 is reliable on this API right now
+        const pkg = await fetchPage(w.from, w.to, 1);
+        const releases = pkg.releases || [];
+        if (releases.length) {
+          windowsOk += 1;
+          for (const r of releases) {
+            if (r && r.ocid && !byOcid.has(r.ocid)) {
+              byOcid.set(r.ocid, shapeRelease(r));
+              if (byOcid.size >= MAX_ITEMS) break;
+            }
+          }
+        }
+      } catch (err) {
+        // skip failing window
       }
-      // Return as soon as we have a usable set — don't burn the full budget.
-      if (byOcid.size >= 40) break;
+      // tiny pause to reduce 500 bursts
+      await new Promise((r) => setTimeout(r, 80));
     }
 
     if (!byOcid.size) {
-      console.error('[tenders] empty after', Date.now() - started, 'ms');
       return res.status(502).json({
         ok: false,
         error: 'Could not load tenders from National Treasury right now. Try again shortly.',
@@ -247,6 +312,7 @@ router.get('/tenders', async (req, res) => {
           (t.title && t.title.toLowerCase().includes(q)) ||
           (t.description && t.description.toLowerCase().includes(q)) ||
           (t.buyer && t.buyer.toLowerCase().includes(q)) ||
+          (t.province && t.province.toLowerCase().includes(q)) ||
           (t.id && String(t.id).toLowerCase().includes(q))
       );
     }
@@ -273,8 +339,8 @@ router.get('/tenders', async (req, res) => {
       total,
       page,
       pageSize,
-      dateFrom: RELIABLE_WINDOWS[0].from,
-      dateTo: RELIABLE_WINDOWS[0].to,
+      dateFrom: WINDOWS[0]?.from,
+      dateTo: WINDOWS[0]?.to,
       windowsTried,
       windowsOk,
       ms: Date.now() - started,
@@ -303,13 +369,17 @@ router.get('/tenders/:ocid', async (req, res) => {
     const deadline = Date.now() + OVERALL_BUDGET_MS;
     let found = null;
 
-    for (const w of RELIABLE_WINDOWS) {
+    for (const w of WINDOWS) {
       if (Date.now() > deadline) break;
-      const releases = await fetchWindow(w.from, w.to, deadline);
-      const match = releases.find((r) => r.ocid === ocid);
-      if (match) {
-        found = shapeRelease(match);
-        break;
+      try {
+        const pkg = await fetchPage(w.from, w.to, 1);
+        const match = (pkg.releases || []).find((r) => r.ocid === ocid);
+        if (match) {
+          found = shapeRelease(match);
+          break;
+        }
+      } catch {
+        /* continue */
       }
     }
 
