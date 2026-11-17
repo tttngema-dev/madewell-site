@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>File your beneficial ownership — Made Well</title>
+  <meta name="description" content="Give us your company details once. We register your (Pty) Ltd with CIPC and email you the documents." />
+  <link rel="icon" href="logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '3042021789469817');
+fbq('track', 'PageView');
+fbq('trackCustom', 'StartRegistration');
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=3042021789469817&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
+<script src="track.js"></script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" width="57" height="84" /></a>
+    <nav><a class="hide-m" href="register.html">Register a company</a><a class="hide-m" href="tenders.html">Tenders</a><a class="btn small" href="index.html">Back to home</a></nav>
+  </header>
+  <nav class="svc-bar" aria-label="Our services"><a href="register.html">Register a company</a><a href="beneficial-ownership.html" class="on" aria-current="page">Beneficial ownership</a></nav>
+  <div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
+
+  <main class="reg">
+    <div class="reg-intro">
+      <h1>File your beneficial ownership</h1>
+      <p>Every company has to tell CIPC who really owns it. Answer a few simple questions and we prepare your three documents and file them for you. <b>Fixed fee: R500.</b></p>
+    </div>
+    <ol id="progress" class="progress" aria-label="Progress"></ol>
+    <form id="bo-form" novalidate onsubmit="return false">
+      <section class="step" data-title="Your company">
+        <h2>Tell us about your company</h2>
+        <label>Company name<input id="c-name" autocomplete="organization" placeholder="e.g. Nomsa’s Catering (Pty) Ltd" /></label>
+        <label>Company registration number<input id="c-reg" placeholder="e.g. 2024/123456/07" /></label>
+        <label>Date the company was registered<input id="c-date" type="date" /><small>It’s on your CIPC registration certificate.</small></label>
+        <div class="addr-wrap"><span class="lbl">Company street address</span><div id="c-addr"></div></div>
+        <label class="check"><input type="checkbox" id="same-post" checked /> <span>The postal address is the same</span></label>
+        <div id="post-wrap" class="addr-wrap" hidden><span class="lbl">Postal address</span><div id="c-post"></div></div>
+        <label>Your email<input id="c-email" type="email" autocomplete="email" /><small>We send your receipt and documents here.</small></label>
+        <label>Your mobile number<input id="c-phone" type="tel" autocomplete="tel" /></label>
+      </section>
+      <section class="step" data-title="Who owns it" hidden>
+        <h2>Who owns the company?</h2>
+        <p class="hint">Add everyone who owns part of the company. The percentages must add up to 100%.</p>
+        <div id="owners"></div>
+        <p id="total" class="total"></p>
+        <button type="button" class="btn small" id="add-owner">+ Add another owner</button>
+      </section>
+      <section class="step" data-title="Director &amp; sign" hidden>
+        <h2>Which director is filing?</h2>
+        <p class="hint">A director has to authorise this filing. You are giving yourself, as the director, permission to submit it to CIPC.</p>
+        <div id="auth-list" class="choice" style="grid-template-columns:1fr"></div>
+        <div id="other-dir" hidden><label>Director’s full name<input id="d-name" /></label><label>Director’s ID number<input id="d-id" inputmode="numeric" /></label></div>
+        <div class="lbl">Sign here with your finger or mouse</div>
+        <canvas id="sigpad" class="sigpad" aria-label="Signature box"></canvas>
+        <div class="sig-row"><span id="sig-hint" class="hint">Draw your signature in the box.</span><button type="button" class="link" id="sig-clear">Clear</button></div>
+        <label>Your full name <span class="soft">(printed under your signature)</span><input id="sig" autocomplete="off" /></label>
+        <label class="check"><input type="checkbox" id="confirm" /> <span>I am a director of this company. I authorise myself to file its beneficial ownership information with CIPC, and I confirm the details in this form are true and complete.</span></label>
+      </section>
+      <section class="step" data-title="Review &amp; pay" hidden>
+        <h2>Check and pay</h2>
+        <div id="summary" class="sum"></div>
+        <p id="id-warn" class="hint" hidden><b>An ID copy is missing.</b> We can’t file without a certified copy of every owner’s ID. You can go back and upload it, or send it to us afterwards on WhatsApp.</p>
+        <p class="secure">Secure payment by PayFast. We never see or store your card details. Questions? <a href="https://wa.me/27672581319" target="_blank" rel="noopener">WhatsApp us</a>.</p>
+        <label class="check"><input type="checkbox" id="consent" /> <span>I agree to the <a href="terms.html" target="_blank" rel="noopener">Terms &amp; refunds</a> and the <a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a>, and I agree that Made Well Media may use these details to prepare and file this on the company’s behalf (POPIA).</span></label>
+      </section>
+      <p id="bo-error" class="error" role="alert" hidden></p>
+      <div class="nav-row"><button type="button" class="btn ghost" id="back" hidden>Back</button><button type="button" class="btn" id="next">Next</button></div>
+    </form>
+  </main>
+<script src="vendor/jspdf.umd.min.js"></script>
+<script src="pay.js"></script>
+<script src="bo.js"></script>
+<footer><p><a href="privacy.html">Privacy policy</a> &middot; <a href="terms.html">Terms &amp; refunds</a> &middot; <a href="https://wa.me/27672581319?text=Hi%20Made%20Well%2C%20I%20have%20a%20question%20about%20registering%20my%20company." target="_blank" rel="noopener">WhatsApp 067 258 1319</a></p><p>© Made Well Media</p></footer>
+<a class="wa-float" href="https://wa.me/27672581319?text=Hi%20Made%20Well%2C%20I%20have%20a%20question%20about%20registering%20my%20company." target="_blank" rel="noopener" aria-label="Chat to us on WhatsApp">WhatsApp us</a>
+</body></html>
