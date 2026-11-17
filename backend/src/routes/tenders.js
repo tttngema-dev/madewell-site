@@ -2,9 +2,14 @@
  * Tender discovery – proxies National Treasury OCDS API
  * https://ocds-api.etenders.gov.za
  *
- * The upstream IIS API is unreliable with Node undici/https for many ranges.
- * We prefer `curl` (available on Render/Linux) which consistently returns 200,
- * with a native https fallback. Windows of known-good dates are tried first.
+ * Critical constraints of the upstream API (observed Nov 2026):
+ * - PageSize >= 20 often returns HTTP 500 → use PageSize 10
+ * - Many date ranges return 500 → prefer known-good windows
+ * - Parallel / rapid requests trigger 500s → sequential + small delays
+ * - Node undici fetch is unreliable → prefer curl, fallback to https
+ *
+ * Strategy: try a short list of known-good windows, stop as soon as we have
+ * enough rows, and enforce an overall time budget so the client never hangs.
  */
 import { Router } from 'express';
 import https from 'https';
@@ -15,29 +20,19 @@ import { promisify } from 'util';
 const execFileAsync = promisify(execFile);
 const router = Router();
 const OCDS_BASE = 'https://ocds-api.etenders.gov.za/api/OCDSReleases';
-const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 min in-process cache
 
-function intFromEnv(name, fallback, min, max) {
-  const n = Number(process.env[name]);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.min(max, Math.max(min, Math.trunc(n)));
-}
+const UPSTREAM_PAGE_SIZE = 10; // MUST stay <= 10 — larger sizes 500 on this API
+const MAX_PAGES_PER_WINDOW = 8;
+const OVERALL_BUDGET_MS = 18000; // hard stop so clients don't spin forever
+const REQUEST_TIMEOUT_MS = 12000;
 
-const UPSTREAM_PAGE_SIZE = 10; // API returns 500 for PageSize >= 20
-const FETCH_RETRIES = intFromEnv('TENDER_FETCH_RETRIES', 2, 0, 5);
-const MAX_PAGES_PER_WINDOW = intFromEnv('TENDER_MAX_PAGES', 15, 1, 30);
-const LOOKBACK_DAYS = intFromEnv('TENDER_LOOKBACK_DAYS', 180, 30, 3650);
-const WINDOW_DAYS = intFromEnv('TENDER_WINDOW_DAYS', 90, 14, 120);
-
+// Windows that currently respond with 200 + data (re-order if needed).
 const RELIABLE_WINDOWS = [
   { from: '2024-09-01', to: '2024-12-31' },
   { from: '2024-06-01', to: '2024-12-31' },
   { from: '2024-01-01', to: '2024-12-31' },
   { from: '2023-07-01', to: '2023-12-31' },
-  { from: '2025-01-01', to: '2025-06-30' },
-  { from: '2025-07-01', to: '2025-12-31' },
-  { from: '2026-01-01', to: '2026-06-30' },
-  { from: '2026-07-01', to: '2026-12-31' },
 ];
 
 const cache = new Map();
@@ -48,34 +43,6 @@ function cacheKey(params) {
 
 function isoDate(d) {
   return d.toISOString().slice(0, 10);
-}
-
-function daysAgo(n) {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - n);
-  return isoDate(d);
-}
-
-function today() {
-  return isoDate(new Date());
-}
-
-function buildWindows(dateFrom, dateTo, windowDays = WINDOW_DAYS) {
-  const windows = [];
-  const end = new Date(dateTo + 'T00:00:00Z');
-  const start = new Date(dateFrom + 'T00:00:00Z');
-  if (end < start) return windows;
-
-  let cursorEnd = end;
-  while (cursorEnd >= start) {
-    const cursorStart = new Date(cursorEnd);
-    cursorStart.setUTCDate(cursorStart.getUTCDate() - (windowDays - 1));
-    if (cursorStart < start) cursorStart.setTime(start.getTime());
-    windows.push({ from: isoDate(cursorStart), to: isoDate(cursorEnd) });
-    cursorEnd = new Date(cursorStart);
-    cursorEnd.setUTCDate(cursorEnd.getUTCDate() - 1);
-  }
-  return windows;
 }
 
 function shapeRelease(r) {
@@ -118,7 +85,7 @@ function shapeRelease(r) {
   };
 }
 
-function httpsGetJson(urlStr, timeoutMs = 25000) {
+function httpsGetJson(urlStr, timeoutMs = REQUEST_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const u = new URL(urlStr);
     const req = https.request(
@@ -141,7 +108,7 @@ function httpsGetJson(urlStr, timeoutMs = 25000) {
         });
         res.on('end', () => {
           if (res.statusCode < 200 || res.statusCode >= 300) {
-            reject(new Error(`OCDS ${res.statusCode}: ${data.slice(0, 160)}`));
+            reject(new Error(`OCDS ${res.statusCode}`));
             return;
           }
           try {
@@ -155,13 +122,13 @@ function httpsGetJson(urlStr, timeoutMs = 25000) {
     req.on('error', reject);
     req.on('timeout', () => {
       req.destroy();
-      reject(new Error('OCDS request timeout'));
+      reject(new Error('OCDS timeout'));
     });
     req.end();
   });
 }
 
-async function curlGetJson(urlStr, timeoutMs = 25000) {
+async function curlGetJson(urlStr, timeoutMs = REQUEST_TIMEOUT_MS) {
   const timeoutSec = Math.max(5, Math.ceil(timeoutMs / 1000));
   const { stdout } = await execFileAsync(
     'curl',
@@ -176,142 +143,99 @@ async function curlGetJson(urlStr, timeoutMs = 25000) {
       'MadeWellTenders/1.0 (+https://madewell.co.za)',
       urlStr,
     ],
-    { maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs + 2000 }
+    { maxBuffer: 12 * 1024 * 1024, timeout: timeoutMs + 1500 }
   );
   return JSON.parse(stdout);
 }
 
-async function fetchOcds({ dateFrom, dateTo, page = 1, pageSize = UPSTREAM_PAGE_SIZE }) {
+async function fetchOcdsPage(dateFrom, dateTo, page) {
   const params = new URLSearchParams({
     dateFrom,
     dateTo,
     PageNumber: String(page),
-    PageSize: String(Math.min(pageSize, UPSTREAM_PAGE_SIZE)),
+    PageSize: String(UPSTREAM_PAGE_SIZE),
   });
   const url = `${OCDS_BASE}?${params}`;
+  const ck = cacheKey({ dateFrom, dateTo, page, pageSize: UPSTREAM_PAGE_SIZE });
+  const hit = cache.get(ck);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.data;
 
-  // Prefer curl — more reliable against National Treasury IIS than Node fetch/https.
-  try {
-    return await curlGetJson(url);
-  } catch (curlErr) {
-    try {
-      return await httpsGetJson(url);
-    } catch (httpsErr) {
-      throw curlErr;
-    }
-  }
-}
-
-async function fetchOcdsWithRetry(args) {
   let lastErr;
-  for (let attempt = 0; attempt <= FETCH_RETRIES; attempt++) {
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      return await fetchOcds(args);
+      let pkg;
+      try {
+        pkg = await curlGetJson(url);
+      } catch {
+        pkg = await httpsGetJson(url);
+      }
+      cache.set(ck, { at: Date.now(), data: pkg });
+      return pkg;
     } catch (err) {
       lastErr = err;
-      if (attempt < FETCH_RETRIES) {
-        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
-      }
+      await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
     }
   }
   throw lastErr;
 }
 
-async function fetchWindow(dateFrom, dateTo) {
+async function fetchWindow(dateFrom, dateTo, deadline) {
   const collected = [];
-  let failed = false;
-  let lastError = null;
-
   for (let p = 1; p <= MAX_PAGES_PER_WINDOW; p++) {
-    const ck = cacheKey({ dateFrom, dateTo, page: p, pageSize: UPSTREAM_PAGE_SIZE });
-    let pkg;
-    const hit = cache.get(ck);
-    if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
-      pkg = hit.data;
-    } else {
-      try {
-        pkg = await fetchOcdsWithRetry({ dateFrom, dateTo, page: p, pageSize: UPSTREAM_PAGE_SIZE });
-        cache.set(ck, { at: Date.now(), data: pkg });
-      } catch (err) {
-        failed = true;
-        lastError = err;
-        console.error(`[tenders] window ${dateFrom}→${dateTo} page ${p}:`, err.message);
-        break;
-      }
+    if (Date.now() > deadline) break;
+    try {
+      const pkg = await fetchOcdsPage(dateFrom, dateTo, p);
+      const releases = pkg.releases || [];
+      collected.push(...releases);
+      if (releases.length < UPSTREAM_PAGE_SIZE) break;
+    } catch (err) {
+      console.error(`[tenders] ${dateFrom}→${dateTo} p${p}:`, err.message);
+      break;
     }
-    const releases = pkg.releases || [];
-    collected.push(...releases);
-    if (releases.length < UPSTREAM_PAGE_SIZE) break;
   }
-
-  return { releases: collected, failed, lastError, from: dateFrom, to: dateTo };
+  return collected;
 }
 
 function mergeReleases(byOcid, releases) {
   for (const r of releases) {
-    if (r && r.ocid && !byOcid.has(r.ocid)) {
-      byOcid.set(r.ocid, shapeRelease(r));
-    }
+    if (r && r.ocid && !byOcid.has(r.ocid)) byOcid.set(r.ocid, shapeRelease(r));
   }
 }
 
 router.get('/tenders', async (req, res) => {
+  const started = Date.now();
+  const deadline = started + OVERALL_BUDGET_MS;
+
   try {
     const q = (req.query.q || '').trim().toLowerCase();
     const statusFilter = (req.query.status || '').toLowerCase();
     const category = (req.query.category || '').toLowerCase();
-    const buyerQ = (req.query.buyer || '').toLowerCase();
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const pageSize = Math.min(50, Math.max(5, parseInt(req.query.pageSize, 10) || 20));
     const sort = req.query.sort || 'closing';
 
-    let dateFrom = req.query.from || daysAgo(LOOKBACK_DAYS);
-    let dateTo = req.query.to || today();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) dateFrom = daysAgo(LOOKBACK_DAYS);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) dateTo = today();
-
     const byOcid = new Map();
     let windowsTried = 0;
     let windowsOk = 0;
-    let windowsFailed = 0;
-    let lastError = null;
 
     for (const w of RELIABLE_WINDOWS) {
-      const result = await fetchWindow(w.from, w.to);
+      if (Date.now() > deadline) break;
       windowsTried += 1;
-      if (result.failed) {
-        windowsFailed += 1;
-        lastError = result.lastError;
-      } else {
+      const releases = await fetchWindow(w.from, w.to, deadline);
+      if (releases.length) {
         windowsOk += 1;
-        mergeReleases(byOcid, result.releases);
+        mergeReleases(byOcid, releases);
       }
-      if (byOcid.size >= 150) break;
-      await new Promise((r) => setTimeout(r, 120));
-    }
-
-    if (byOcid.size < 30) {
-      const recent = buildWindows(dateFrom, dateTo, WINDOW_DAYS).slice(0, 6);
-      for (const w of recent) {
-        const result = await fetchWindow(w.from, w.to);
-        windowsTried += 1;
-        if (result.failed) {
-          windowsFailed += 1;
-          lastError = result.lastError;
-        } else {
-          windowsOk += 1;
-          mergeReleases(byOcid, result.releases);
-        }
-        if (byOcid.size >= 200) break;
-        await new Promise((r) => setTimeout(r, 120));
-      }
+      // Return as soon as we have a usable set — don't burn the full budget.
+      if (byOcid.size >= 40) break;
     }
 
     if (!byOcid.size) {
-      console.error('[tenders] no releases from any window:', lastError && lastError.message);
+      console.error('[tenders] empty after', Date.now() - started, 'ms');
       return res.status(502).json({
         ok: false,
         error: 'Could not load tenders from National Treasury right now. Try again shortly.',
+        ms: Date.now() - started,
       });
     }
 
@@ -329,7 +253,6 @@ router.get('/tenders', async (req, res) => {
     if (statusFilter === 'open') list = list.filter((t) => t.status !== 'closed');
     else if (statusFilter === 'closed') list = list.filter((t) => t.status === 'closed');
     if (category) list = list.filter((t) => (t.category || '').toLowerCase().includes(category));
-    if (buyerQ) list = list.filter((t) => (t.buyer || '').toLowerCase().includes(buyerQ));
 
     if (sort === 'newest') {
       list.sort((a, b) => (b.published || '').localeCompare(a.published || ''));
@@ -344,22 +267,22 @@ router.get('/tenders', async (req, res) => {
     const total = list.length;
     const start = (page - 1) * pageSize;
     const items = list.slice(start, start + pageSize);
-    const partial = windowsFailed > 0;
 
     res.json({
       ok: true,
       total,
       page,
       pageSize,
-      dateFrom,
-      dateTo,
+      dateFrom: RELIABLE_WINDOWS[0].from,
+      dateTo: RELIABLE_WINDOWS[0].to,
       windowsTried,
       windowsOk,
-      windowsFailed,
-      partial,
-      warning: partial
-        ? 'Some National Treasury date ranges could not be loaded; results may be incomplete.'
-        : undefined,
+      ms: Date.now() - started,
+      partial: windowsOk < windowsTried,
+      warning:
+        windowsOk < windowsTried
+          ? 'Some National Treasury date ranges could not be loaded; results may be incomplete.'
+          : undefined,
       items,
       source: 'National Treasury eTenders OCDS API',
       license: 'Open Data Commons PDDL',
@@ -369,6 +292,7 @@ router.get('/tenders', async (req, res) => {
     res.status(502).json({
       ok: false,
       error: 'Could not load tenders from National Treasury right now. Try again shortly.',
+      ms: Date.now() - started,
     });
   }
 });
@@ -376,15 +300,12 @@ router.get('/tenders', async (req, res) => {
 router.get('/tenders/:ocid', async (req, res) => {
   try {
     const ocid = decodeURIComponent(req.params.ocid);
+    const deadline = Date.now() + OVERALL_BUDGET_MS;
     let found = null;
 
-    const windows = [
-      ...RELIABLE_WINDOWS,
-      ...buildWindows(daysAgo(LOOKBACK_DAYS), today(), WINDOW_DAYS).slice(0, 4),
-    ];
-
-    for (const w of windows) {
-      const { releases } = await fetchWindow(w.from, w.to);
+    for (const w of RELIABLE_WINDOWS) {
+      if (Date.now() > deadline) break;
+      const releases = await fetchWindow(w.from, w.to, deadline);
       const match = releases.find((r) => r.ocid === ocid);
       if (match) {
         found = shapeRelease(match);
@@ -392,7 +313,7 @@ router.get('/tenders/:ocid', async (req, res) => {
       }
     }
 
-    if (!found) return res.status(404).json({ ok: false, error: 'Tender not found in recent releases' });
+    if (!found) return res.status(404).json({ ok: false, error: 'Tender not found' });
     res.json({ ok: true, item: found });
   } catch (err) {
     console.error('[tenders/:ocid]', err.message);
