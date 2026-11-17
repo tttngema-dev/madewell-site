@@ -14,10 +14,12 @@ function intFromEnv(name, fallback, min, max) {
   return Math.min(max, Math.max(min, Math.trunc(n)));
 }
 
-// Safer default: 120 days x 10 pages x 100 = up to ~1000 upstream records per cold load.
+// Safer default: 120 days x 20 pages x 50 = up to ~1000 upstream records per cold load.
+// Keep PageSize at 50: the eTenders OCDS endpoint is more reliable than with 100.
 const LOOKBACK_DAYS = intFromEnv('TENDER_LOOKBACK_DAYS', 120, 1, 3650);
-const MAX_PAGES = intFromEnv('TENDER_MAX_PAGES', 10, 1, 20);
-const UPSTREAM_PAGE_SIZE = 100;
+const MAX_PAGES = intFromEnv('TENDER_MAX_PAGES', 20, 1, 40);
+const UPSTREAM_PAGE_SIZE = 50;
+const FETCH_RETRIES = intFromEnv('TENDER_FETCH_RETRIES', 2, 0, 5);
 
 const cache = new Map();
 
@@ -73,23 +75,38 @@ function shapeRelease(r) {
   };
 }
 
-async function fetchOcds({ dateFrom, dateTo, page = 1, pageSize = 50 }) {
+async function fetchOcds({ dateFrom, dateTo, page = 1, pageSize = UPSTREAM_PAGE_SIZE }) {
   const params = new URLSearchParams({
     dateFrom,
     dateTo,
     PageNumber: String(page),
-    PageSize: String(Math.min(pageSize, 100)),
+    PageSize: String(Math.min(pageSize, UPSTREAM_PAGE_SIZE)),
   });
   const url = `${OCDS_BASE}?${params}`;
   const res = await fetch(url, {
     headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(25000),
+    signal: AbortSignal.timeout(30000),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`OCDS ${res.status}: ${text.slice(0, 200)}`);
   }
   return res.json();
+}
+
+async function fetchOcdsWithRetry(args) {
+  let lastErr;
+  for (let attempt = 0; attempt <= FETCH_RETRIES; attempt++) {
+    try {
+      return await fetchOcds(args);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < FETCH_RETRIES) {
+        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastErr;
 }
 
 router.get('/tenders', async (req, res) => {
@@ -108,6 +125,8 @@ router.get('/tenders', async (req, res) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) dateTo = today();
 
     const all = [];
+    let pageError = null;
+    let loadedPages = 0;
     for (let p = 1; p <= MAX_PAGES; p++) {
       const ck = cacheKey({ dateFrom, dateTo, page: p, pageSize: UPSTREAM_PAGE_SIZE });
       let pkg;
@@ -115,14 +134,23 @@ router.get('/tenders', async (req, res) => {
       if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
         pkg = hit.data;
       } else {
-        pkg = await fetchOcds({ dateFrom, dateTo, page: p, pageSize: UPSTREAM_PAGE_SIZE });
-        cache.set(ck, { at: Date.now(), data: pkg });
+        try {
+          pkg = await fetchOcdsWithRetry({ dateFrom, dateTo, page: p, pageSize: UPSTREAM_PAGE_SIZE });
+          cache.set(ck, { at: Date.now(), data: pkg });
+        } catch (err) {
+          pageError = err;
+          console.error(`[tenders] page ${p}:`, err.message);
+          break;
+        }
       }
       const releases = pkg.releases || [];
+      loadedPages += 1;
       if (!releases.length) break;
       for (const r of releases) all.push(shapeRelease(r));
       if (releases.length < UPSTREAM_PAGE_SIZE) break;
     }
+
+    if (!all.length && pageError) throw pageError;
 
     let list = all;
     if (q) {
@@ -160,6 +188,9 @@ router.get('/tenders', async (req, res) => {
       pageSize,
       dateFrom,
       dateTo,
+      loadedPages,
+      partial: Boolean(pageError),
+      warning: pageError ? 'Some tender pages could not be loaded; results may be incomplete.' : undefined,
       items,
       source: 'National Treasury eTenders OCDS API',
       license: 'Open Data Commons PDDL',
@@ -180,7 +211,7 @@ router.get('/tenders/:ocid', async (req, res) => {
     const dateTo = today();
     let found = null;
     for (let p = 1; p <= MAX_PAGES && !found; p++) {
-      const pkg = await fetchOcds({ dateFrom, dateTo, page: p, pageSize: UPSTREAM_PAGE_SIZE });
+      const pkg = await fetchOcdsWithRetry({ dateFrom, dateTo, page: p, pageSize: UPSTREAM_PAGE_SIZE });
       const releases = pkg.releases || [];
       const match = releases.find((r) => r.ocid === ocid);
       if (match) {
