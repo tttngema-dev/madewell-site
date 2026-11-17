@@ -7,6 +7,18 @@ import { Router } from 'express';
 const router = Router();
 const OCDS_BASE = 'https://ocds-api.etenders.gov.za/api/OCDSReleases';
 const CACHE_TTL_MS = 5 * 60 * 1000;
+
+function intFromEnv(name, fallback, min, max) {
+  const n = Number(process.env[name]);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.trunc(n)));
+}
+
+// Safer default: 120 days x 10 pages x 100 = up to ~1000 upstream records per cold load.
+const LOOKBACK_DAYS = intFromEnv('TENDER_LOOKBACK_DAYS', 120, 1, 3650);
+const MAX_PAGES = intFromEnv('TENDER_MAX_PAGES', 10, 1, 20);
+const UPSTREAM_PAGE_SIZE = 100;
+
 const cache = new Map();
 
 function cacheKey(params) {
@@ -90,26 +102,26 @@ router.get('/tenders', async (req, res) => {
     const pageSize = Math.min(50, Math.max(5, parseInt(req.query.pageSize, 10) || 20));
     const sort = req.query.sort || 'closing';
 
-    let dateFrom = req.query.from || daysAgo(45);
+    let dateFrom = req.query.from || daysAgo(LOOKBACK_DAYS);
     let dateTo = req.query.to || today();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) dateFrom = daysAgo(45);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) dateFrom = daysAgo(LOOKBACK_DAYS);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) dateTo = today();
 
     const all = [];
-    for (let p = 1; p <= 3; p++) {
-      const ck = cacheKey({ dateFrom, dateTo, page: p });
+    for (let p = 1; p <= MAX_PAGES; p++) {
+      const ck = cacheKey({ dateFrom, dateTo, page: p, pageSize: UPSTREAM_PAGE_SIZE });
       let pkg;
       const hit = cache.get(ck);
       if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
         pkg = hit.data;
       } else {
-        pkg = await fetchOcds({ dateFrom, dateTo, page: p, pageSize: 50 });
+        pkg = await fetchOcds({ dateFrom, dateTo, page: p, pageSize: UPSTREAM_PAGE_SIZE });
         cache.set(ck, { at: Date.now(), data: pkg });
       }
       const releases = pkg.releases || [];
       if (!releases.length) break;
       for (const r of releases) all.push(shapeRelease(r));
-      if (releases.length < 50) break;
+      if (releases.length < UPSTREAM_PAGE_SIZE) break;
     }
 
     let list = all;
@@ -164,18 +176,18 @@ router.get('/tenders', async (req, res) => {
 router.get('/tenders/:ocid', async (req, res) => {
   try {
     const ocid = decodeURIComponent(req.params.ocid);
-    const dateFrom = daysAgo(90);
+    const dateFrom = daysAgo(LOOKBACK_DAYS);
     const dateTo = today();
     let found = null;
-    for (let p = 1; p <= 5 && !found; p++) {
-      const pkg = await fetchOcds({ dateFrom, dateTo, page: p, pageSize: 50 });
+    for (let p = 1; p <= MAX_PAGES && !found; p++) {
+      const pkg = await fetchOcds({ dateFrom, dateTo, page: p, pageSize: UPSTREAM_PAGE_SIZE });
       const releases = pkg.releases || [];
       const match = releases.find((r) => r.ocid === ocid);
       if (match) {
         found = shapeRelease(match);
         break;
       }
-      if (releases.length < 50) break;
+      if (releases.length < UPSTREAM_PAGE_SIZE) break;
     }
     if (!found) return res.status(404).json({ ok: false, error: 'Tender not found in recent releases' });
     res.json({ ok: true, item: found });
