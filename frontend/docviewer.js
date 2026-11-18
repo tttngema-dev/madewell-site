@@ -134,6 +134,7 @@
         <button type="button" class="dv-tool" data-tool="text" title="Click on the page to type text">+ Text</button>
         <button type="button" class="dv-tool" data-tool="tick" title="Click on the page to place a tick">✓ Tick</button>
         <button type="button" class="dv-tool" data-tool="date" title="Click on the page to place today's date">Date</button>
+        <button type="button" class="dv-tool" data-tool="stamp" title="Click on the page to place a company stamp">Stamp</button>
         <span class="dv-sep"></span>
         <button type="button" class="dv-btn dv-ico" data-act="size-down" aria-label="Smaller text" title="Smaller text">A−</button>
         <button type="button" class="dv-btn dv-ico" data-act="size-up" aria-label="Larger text" title="Larger text">A+</button>
@@ -144,7 +145,7 @@
       </div>` : ''}
       <div class="dv-hint" ${editable ? '' : 'hidden'}></div>
       <div class="dv-main">
-        ${editable ? `<aside class="dv-profile" hidden><div class="dv-profile-head"><strong>Quick-fill from your company profile</strong><button type="button" class="dv-btn dv-ico" data-act="profile-toggle" aria-label="Close">×</button></div><p class="dv-profile-help">Tap a field on the page, then tap a value to fill it in. Or tap a value, then tap anywhere on the page to drop it there.</p><div class="dv-chips"></div></aside>` : ''}
+        ${editable ? `<aside class="dv-profile" hidden><div class="dv-profile-head"><strong>Quick-fill from your company profile</strong><button type="button" class="dv-btn dv-ico" data-act="profile-toggle" aria-label="Close">×</button></div><p class="dv-profile-help">Tap a field on the page, then tap a value to fill it. Or tap a value, then tap anywhere on the page to drop a new box there. Only the box you’re editing stays highlighted.</p><div class="dv-chips"></div></aside>` : ''}
         <div class="dv-scroll"><div class="dv-pages"><p class="dv-loading">Loading document…</p></div></div>
       </div>
       <div class="dv-email" hidden>
@@ -158,7 +159,7 @@
           <p class="dv-email-msg" role="status" hidden></p>
           <div class="dv-email-actions">
             <button type="button" class="dv-btn" data-act="email-cancel">Cancel</button>
-            <button type="button" class="dv-btn" data-act="email-own" title="Downloads the PDF and opens your own email app">Use my email app</button>
+            <button type="button" class="dv-btn" data-act="email-own" title="Downloads the filled PDF and opens your email app so you can attach it">Use my email app</button>
             <button type="submit" class="dv-btn dv-primary">Send email</button>
           </div>
         </form>
@@ -340,7 +341,7 @@
         el.className = 'dv-w dv-w-' + wd.kind;
         el.title = wd.label || wd.name || '';
         Object.assign(el.style, { left: left + 'px', top: top + 'px', width: w + 'px', height: h + 'px' });
-        el.addEventListener('focus', () => { state.lastFocus = el; });
+        el.addEventListener('focus', () => { state.lastFocus = el; deselect(); });
         ov.appendChild(el);
       });
       // free items
@@ -372,13 +373,22 @@
         ta.value = it.text || '';
         ta.spellcheck = false;
         ta.style.fontSize = it.size * s + 'px';
-        ta.setAttribute('aria-label', 'Text box');
+        ta.setAttribute('aria-label', it.type === 'stamp' ? 'Company stamp' : 'Text box');
+        if (it.type === 'stamp') ta.className = 'dv-stamp-ta';
         ta.addEventListener('input', () => {
           it.text = ta.value;
-          if (ta.scrollHeight > ta.clientHeight + 1) { it.h = Math.ceil(ta.scrollHeight / state.scale) + 2; wrap.style.height = it.h * state.scale + 'px'; }
+          if (ta.scrollHeight > ta.clientHeight + 1) { it.h = Math.ceil(ta.scrollHeight / state.scale) + (it.type === 'stamp' ? 8 : 2); wrap.style.height = it.h * state.scale + 'px'; }
           touch();
         });
-        ta.addEventListener('focus', () => { state.lastFocus = ta; });
+        ta.addEventListener('focus', () => { state.lastFocus = ta; select(it.id); });
+        ta.addEventListener('blur', () => {
+          // keep highlight only while the box itself still has focus or is being dragged
+          setTimeout(() => {
+            if (state.selected === it.id && document.activeElement !== ta && !wrap.contains(document.activeElement)) {
+              // leave selected if user just clicked the handle; otherwise deselect when focus left the page
+            }
+          }, 0);
+        });
         wrap.insertBefore(ta, wrap.firstChild);
         wrap._ta = ta;
         // native resize handle on the textarea → keep the model in sync
@@ -393,7 +403,10 @@
         }
       }
       wrap.addEventListener('focusin', () => select(it.id));
-      wrap.addEventListener('pointerdown', () => select(it.id));
+      wrap.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('.dv-x')) return;
+        select(it.id);
+      });
       wrap._it = it; wrap._place = place;
 
       // drag by handle
@@ -416,8 +429,15 @@
     function select(id) {
       state.selected = id;
       root.querySelectorAll('.dv-item.sel').forEach((e) => e.classList.remove('sel'));
-      const el = root.querySelector('.dv-item[data-id="' + id + '"]');
-      if (el) el.classList.add('sel');
+      if (id) {
+        const el = root.querySelector('.dv-item[data-id="' + id + '"]');
+        if (el) el.classList.add('sel');
+      }
+    }
+    function deselect() {
+      if (!state.selected) return;
+      state.selected = null;
+      root.querySelectorAll('.dv-item.sel').forEach((e) => e.classList.remove('sel'));
     }
     function removeItem(id) {
       state.items = state.items.filter((i) => i.id !== id);
@@ -430,6 +450,12 @@
       const size = state.defaultSize;
       const it = { id: uid(), type, page: p.n, x, y, size, text: text || '' };
       if (type === 'tick') { it.w = size * 1.5; it.h = size * 1.5; }
+      else if (type === 'stamp') {
+        const lines = String(text || '').split(/\n/).filter(Boolean);
+        const longest = lines.reduce((m, ln) => Math.max(m, ln.length), 8);
+        it.w = Math.min(p.w - 20, Math.max(120, longest * size * 0.58 + 24));
+        it.h = Math.ceil(size * 1.35 * Math.max(2, lines.length) + 16);
+      }
       else {
         const textW = text ? Math.min(p.w - 20, Math.max(80, text.length * size * 0.55 + 12)) : 150;
         it.w = textW; it.h = Math.ceil(size * 1.25 * (text && text.includes('\n') ? text.split('\n').length : 1)) + 4;
@@ -451,25 +477,43 @@
       root.classList.toggle('dv-placing', !!t);
       hintEl.textContent = !t ? defaultHint()
         : typeof t === 'object' ? 'Now tap on the page where “' + truncate(t.value, 40) + '” should go.'
-          : t === 'text' ? 'Tap on the page where you want to type.' : t === 'tick' ? 'Tap on the page where the tick should go.' : 'Tap on the page where the date should go.';
+          : t === 'text' ? 'Tap on the page where you want to type.'
+            : t === 'tick' ? 'Tap on the page where the tick should go.'
+              : t === 'stamp' ? 'Tap on the page where the company stamp should go.'
+                : 'Tap on the page where the date should go.';
     }
     const truncate = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
     function defaultHint() {
-      return 'Tap a form field to type in it, or use + Text, ✓ Tick and Date to write anywhere on the page.';
+      return 'Tap a form field to type in it, or use + Text, ✓ Tick, Date or Stamp to write anywhere on the page.';
     }
 
     function onPagePointer(e, p) {
-      if (!state.tool) return;
-      if (e.target.closest('.dv-item, .dv-w')) return;
+      if (e.target.closest('.dv-item, .dv-w, .dv-handle, .dv-x')) return;
+      if (!state.tool) {
+        // Clicked empty page: unhighlight any selected box so only the one being edited stays highlighted
+        deselect();
+        return;
+      }
       const r = p.el.getBoundingClientRect();
       const x = (e.clientX - r.left) / state.scale, y = (e.clientY - r.top) / state.scale;
       const t = state.tool;
       if (t === 'tick') addItem('tick', p, x - 8, y - 8);
       else if (t === 'date') addItem('text', p, x, y - 8, todayText());
       else if (t === 'text') addItem('text', p, x, y - 8);
-      else if (typeof t === 'object') addItem('text', p, x, y - 8, t.value);
+      else if (t === 'stamp') addItem('stamp', p, x, y - 8, stampText());
+      else if (typeof t === 'object') addItem(t.stamp ? 'stamp' : 'text', p, x, y - 8, t.value);
       e.preventDefault();
       setTool(null);
+    }
+
+    function stampText() {
+      const prof = state.profile || {};
+      const name = (prof.registered_name || prof.trading_name || '').trim() || 'Company name';
+      const reg = (prof.cipc_number || '').trim();
+      const lines = [name];
+      if (reg) lines.push('Reg. ' + reg);
+      lines.push(todayText());
+      return lines.join('\n');
     }
 
     // ------------------------------------------------------------ profile chips
@@ -490,28 +534,36 @@
         ['Today’s date', todayText()],
       ].filter(([, v]) => v && String(v).trim());
       state.profile = prof;
+      // Always offer a company stamp when we have at least a name
+      const stampVal = stampText();
+      if ((prof.registered_name || prof.trading_name) && !chips.some(([l]) => l === 'Company stamp')) {
+        chips.unshift(['Company stamp', stampVal]);
+      }
       if (chips.length <= 1) {
         box.innerHTML = '<p class="dv-profile-help">No company details saved yet. Add them in <strong>Company profile</strong> on your dashboard and they will appear here.</p>';
       } else box.innerHTML = '';
       chips.forEach(([label, value]) => {
         const b = document.createElement('button');
         b.type = 'button'; b.className = 'dv-chip';
-        b.innerHTML = `<span>${esc(label)}</span><b>${esc(truncate(String(value), 60))}</b>`;
+        b.innerHTML = `<span>${esc(label)}</span><b>${esc(truncate(String(value).replace(/\n/g, ' · '), 60))}</b>`;
         // pointerdown + preventDefault keeps focus on the field the user tapped
         b.addEventListener('pointerdown', (e) => e.preventDefault());
-        b.addEventListener('click', () => useValue(String(value)));
+        b.addEventListener('click', () => {
+          if (label === 'Company stamp') useValue(String(value), true);
+          else useValue(String(value), false);
+        });
         box.appendChild(b);
       });
     }
-    function useValue(value) {
+    function useValue(value, asStamp) {
       const f = state.lastFocus;
-      if (f && f.isConnected && root.contains(f)) {
+      if (f && f.isConnected && root.contains(f) && !asStamp) {
         f.value = value;
         f.dispatchEvent(new Event('input', { bubbles: true }));
         f.focus();
         return;
       }
-      setTool({ value });
+      setTool({ value, stamp: !!asStamp });
       if (global.matchMedia && matchMedia('(max-width: 760px)').matches) $('.dv-profile').hidden = true;
     }
 
@@ -554,10 +606,29 @@
         }
         const text = safeText(font, it.text || '');
         if (!text.trim()) return;
-        const lines = wrapLines(text, font, it.size, Math.max(10, it.w - 4));
+        if (it.type === 'stamp') {
+          // Draw a simple rectangular company stamp
+          const [x0, y0] = toPdf(it.x, it.y);
+          const [x1, y1] = toPdf(it.x + it.w, it.y + it.h);
+          const left = Math.min(x0, x1), bottom = Math.min(y0, y1);
+          const width = Math.abs(x1 - x0), height = Math.abs(y1 - y0);
+          page.drawRectangle({
+            x: left, y: bottom, width, height,
+            borderWidth: 1.5, borderColor: black, color: L.rgb(1, 1, 1),
+            opacity: 0.92, borderOpacity: 1,
+          });
+          // Inner border for a classic stamp look
+          const inset = 3;
+          page.drawRectangle({
+            x: left + inset, y: bottom + inset, width: Math.max(0, width - inset * 2), height: Math.max(0, height - inset * 2),
+            borderWidth: 0.8, borderColor: black, color: undefined, borderOpacity: 0.85,
+          });
+        }
+        const pad = it.type === 'stamp' ? 6 : 2;
+        const lines = wrapLines(text, font, it.size, Math.max(10, it.w - pad * 2));
         lines.forEach((ln, k) => {
           if (!ln) return;
-          const [px, py] = toPdf(it.x + 2, it.y + 1 + it.size * 0.93 + k * it.size * 1.2);
+          const [px, py] = toPdf(it.x + pad, it.y + pad + it.size * 0.9 + k * it.size * 1.25);
           page.drawText(ln, { x: px, y: py, size: it.size, font, color: black, rotate: L.degrees(rot) });
         });
       });
@@ -626,9 +697,16 @@
       await withBusy(btn, 'Preparing…', async () => {
         try {
           const out = await buildFilledPdf();
+          // Browsers cannot attach a generated file to mailto for security reasons.
+          // Download the PDF, then open the user's email app so they can attach it in one step.
           download(out, slug(o.title) + '-filled.pdf');
-          const body = (f.message.value ? f.message.value + '\n\n' : '') + '(Please attach the downloaded PDF: ' + slug(o.title) + '-filled.pdf)';
-          location.href = 'mailto:' + encodeURIComponent(f.to.value.trim()).replace(/%2C/g, ',').replace(/%40/g, '@') + '?subject=' + encodeURIComponent(f.subject.value) + '&body=' + encodeURIComponent(body);
+          const filename = slug(o.title) + '-filled.pdf';
+          const body = (f.message.value ? f.message.value + '\n\n' : '') +
+            '—\nPlease attach the PDF that was just downloaded: ' + filename;
+          const to = f.to.value.trim().replace(/\s+/g, '');
+          location.href = 'mailto:' + encodeURIComponent(to).replace(/%2C/g, ',').replace(/%40/g, '@') +
+            '?subject=' + encodeURIComponent(f.subject.value) +
+            '&body=' + encodeURIComponent(body);
         } catch (err) { emailMsg(err.message, 'err'); }
       });
     }

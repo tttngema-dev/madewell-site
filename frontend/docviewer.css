@@ -52,16 +52,30 @@ button.dv-w { cursor: pointer; font-size: 1em; line-height: 1; display: flex; al
 button.dv-w-radio { border-radius: 50%; }
 button.dv-w.on { background: rgba(255, 211, 107, 0.6); }
 
-/* free text / tick items */
+/* free text / tick / stamp items */
 .dv-item { position: absolute; color: #0a0a20; }
 .dv-item textarea { width: 100%; height: 100%; margin: 0; padding: 1px 2px; font-family: Helvetica, Arial, sans-serif; line-height: 1.2; color: #0a0a20; background: rgba(255, 236, 150, 0.35); border: 1px dashed rgba(179, 107, 0, 0.7); border-radius: 2px; resize: both; overflow: hidden; display: block; }
 .dv-item textarea:focus { outline: 2px solid var(--gold); background: rgba(255, 236, 150, 0.6); }
 .dv-item-tick { background: rgba(255, 236, 150, 0.25); border: 1px dashed rgba(179, 107, 0, 0.55); border-radius: 3px; }
 .dv-item-tick svg { width: 100%; height: 100%; display: block; }
+.dv-item-stamp textarea, .dv-stamp-ta {
+  background: rgba(255, 252, 240, 0.92);
+  border: 2px solid rgba(40, 40, 60, 0.85);
+  border-radius: 3px;
+  padding: 6px 8px;
+  text-align: center;
+  font-weight: 600;
+  line-height: 1.3;
+  box-shadow: inset 0 0 0 1.5px rgba(40, 40, 60, 0.35);
+}
+.dv-item-stamp.sel textarea, .dv-item-stamp textarea:focus {
+  outline: 2px solid var(--gold);
+  background: rgba(255, 248, 220, 0.98);
+}
 .dv-handle { position: absolute; left: -1.5rem; top: -1px; width: 1.4rem; height: 1.4rem; display: none; align-items: center; justify-content: center; background: var(--stage-2); color: var(--bulb); border: 1px solid var(--line); border-radius: 6px; font-size: 0.9rem; cursor: grab; touch-action: none; user-select: none; }
 .dv-x { position: absolute; right: -0.55rem; top: -1.45rem; width: 1.35rem; height: 1.35rem; display: none; align-items: center; justify-content: center; padding: 0; background: #7a2a2a; color: #fff; border: 0; border-radius: 50%; cursor: pointer; font-size: 1rem; line-height: 1; }
 .dv-item.sel .dv-handle, .dv-item.sel .dv-x, .dv-item:hover .dv-handle, .dv-item:hover .dv-x { display: flex; }
-.dv-item.sel .dv-item-tick, .dv-item-tick.sel { outline: 2px solid var(--gold); }
+.dv-item.sel.dv-item-tick { outline: 2px solid var(--gold); }
 @media (pointer: coarse) { .dv-handle { width: 1.9rem; height: 1.9rem; left: -2.1rem; } .dv-x { width: 1.8rem; height: 1.8rem; top: -1.9rem; } }
 
 /* quick-fill panel */
