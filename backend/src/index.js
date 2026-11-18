@@ -9,6 +9,7 @@ import { trackRouter, adminRouter } from './routes/admin.js';
 import { beneficialRouter } from './routes/beneficial.js';
 import { tendersRouter } from './routes/tenders.js';
 import { accountRouter } from './routes/account.js';
+import { docsRouter } from './routes/docs.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -18,8 +19,16 @@ const allowed = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173')
   .split(',')
   .map((s) => s.trim());
 
-app.use(cors({ origin: allowed, credentials: true }));
+// ALLOWED_ORIGINS may contain wildcards, e.g. https://*.workers.dev (handy for preview/staging sites)
+const originRules = allowed.map((o) =>
+  o.includes('*')
+    ? new RegExp('^' + o.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[a-z0-9.-]+') + '$', 'i')
+    : o
+);
+const originOk = (origin) => !origin || originRules.some((r) => (typeof r === 'string' ? r === origin : r.test(origin)));
+app.use(cors({ origin: (origin, cb) => cb(null, originOk(origin)), credentials: true }));
 app.use('/api/bo', express.json({ limit: '15mb' }), beneficialRouter);
+app.use('/api/account/docs/email', express.json({ limit: '20mb' })); // filled PDFs arrive as base64
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/health', (_req, res) =>
@@ -34,6 +43,7 @@ app.use('/api', trackRouter);
 app.use('/api', adminRouter);
 app.use('/api', tendersRouter);
 app.use('/api', accountRouter);
+app.use('/api', docsRouter);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

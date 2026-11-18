@@ -237,3 +237,20 @@
   .top nav a.btn.small { padding: 0.45rem 0.9rem; }
   html, body { overflow-x: hidden; }
 }
+
+/* documents tab: preview buttons */
+.detail-panel .docs-hint { margin: 0.25rem 0 0; }
+.detail-panel .docs .doc-open {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; width: 100%; text-align: left;
+  font: inherit; background: var(--stage-2); border: 1px solid var(--line); border-radius: 10px;
+  padding: 0.7rem 0.9rem; color: var(--bulb); text-decoration: none; font-size: 0.92rem; cursor: pointer;
+}
+.detail-panel .docs .doc-open:hover { border-color: var(--gold); }
+.detail-panel .docs .doc-open > strong { flex: 1 1 auto; min-width: 0; }
+.detail-panel .docs .doc-open .doc-meta { flex-basis: 100%; order: 3; }
+.detail-panel .docs .doc-open { flex-wrap: wrap; }
+.detail-panel .docs .doc-cta {
+  order: 2; flex: none; font-size: 0.78rem; font-weight: 700; color: #1a1200; background: var(--gold);
+  border-radius: 999px; padding: 0.2rem 0.7rem;
+}
+.detail-panel .docs a.doc-open .doc-cta { background: transparent; color: var(--bulb); border: 1px solid var(--line); }

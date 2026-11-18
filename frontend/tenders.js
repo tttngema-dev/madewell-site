@@ -202,15 +202,60 @@
     );
   }
 
+  // Word / Excel / zip files can't be shown in the browser, so those keep a plain download link.
+  function canPreview(d) {
+    const s = ((d.format || '') + ' ' + (d.url || '') + ' ' + (d.title || '')).toLowerCase();
+    if (/\.(docx?|xlsx?|pptx?|zip|rar|7z|csv|txt|rtf)(\b|$|\?)/.test(s)) return false;
+    if (/(msword|wordprocessing|spreadsheet|ms-excel|powerpoint|zip|rar)/.test(s)) return false;
+    return !!d.url;
+  }
+
   function renderDocsTab(t) {
     const docs = t.documents || [];
     if (!docs.length) {
       return '<p class="fine">No documents are attached to this tender in the data feed. Check the official portal — the bid pack may be published there.</p>';
     }
-    return '<ul class="docs">' + docs.map((d) =>
-      '<li><a href="' + esc(d.url) + '" target="_blank" rel="noopener"><strong>' + esc(d.title) + '</strong>' +
-      '<span class="doc-meta">' + [d.format, d.datePublished ? formatDay(d.datePublished) : ''].filter(Boolean).map(esc).join(' · ') + '</span></a></li>'
-    ).join('') + '</ul>';
+    return '<p class="fine docs-hint">Tap a document to preview it here. You can download it from the preview.</p>' +
+      '<ul class="docs">' + docs.map((d, i) => {
+        const meta = [d.format, d.datePublished ? formatDay(d.datePublished) : ''].filter(Boolean).map(esc).join(' · ');
+        const inner = '<strong>' + esc(d.title) + '</strong><span class="doc-meta">' + meta + '</span>';
+        return canPreview(d)
+          ? '<li class="doc-row"><button type="button" class="doc-open" data-doc="' + i + '">' + inner +
+            '<span class="doc-cta">Preview</span></button></li>'
+          : '<li class="doc-row"><a class="doc-open" href="' + esc(d.url) + '" target="_blank" rel="noopener">' + inner +
+            '<span class="doc-cta">Download</span></a></li>';
+      }).join('') + '</ul>';
+  }
+
+  async function saveTender(t) {
+    return MWAuth.api('/api/account/saved', {
+      method: 'POST',
+      body: JSON.stringify({
+        ocid: t.ocid, title: t.title, buyer: t.buyer, closing_date: t.closingDate, status: 'watching',
+        documents: (t.documents || []).map((d) => ({ id: d.id, title: d.title, url: d.url, format: d.format, datePublished: d.datePublished })),
+      }),
+    });
+  }
+
+  function openPreview(t, idx) {
+    const d = (t.documents || [])[idx];
+    if (!d || !window.MWDocViewer) return;
+    MWDocViewer.open({
+      url: d.url, title: d.title, tenderTitle: t.title, ocid: t.ocid, editable: false, sourceUrl: d.url,
+      fillLabel: 'Save & fill in on dashboard',
+      onFill: async (btn) => {
+        const user = window.MWAuth ? await MWAuth.getUser() : null;
+        if (!user) { location.href = 'login.html?next=' + encodeURIComponent(location.pathname); return; }
+        btn.disabled = true; btn.textContent = 'Saving…';
+        try {
+          await saveTender(t);
+          location.href = 'dashboard.html?open=' + encodeURIComponent(t.ocid) + '&doc=' + idx;
+        } catch (err) {
+          btn.disabled = false; btn.textContent = 'Save & fill in on dashboard';
+          alert(err.message || 'Could not save this tender.');
+        }
+      },
+    });
   }
 
   function renderSourceTab(t) {
@@ -241,6 +286,9 @@
     });
     const panel = $('#tab-panel');
     panel.innerHTML = tab === 'documents' ? renderDocsTab(t) : tab === 'source' ? renderSourceTab(t) : renderDetailsTab(t);
+    if (tab === 'documents') {
+      panel.querySelectorAll('button.doc-open').forEach((b) => b.addEventListener('click', () => openPreview(t, +b.dataset.doc)));
+    }
   }
 
   async function openDetail(t) {
@@ -281,12 +329,7 @@
         saveBtn.disabled = true;
         saveBtn.textContent = 'Saving…';
         try {
-          await MWAuth.api('/api/account/saved', {
-            method: 'POST',
-            body: JSON.stringify({
-              ocid: t.ocid, title: t.title, buyer: t.buyer, closing_date: t.closingDate, status: 'watching',
-            }),
-          });
+          await saveTender(t);
           saveBtn.textContent = 'Saved ✓';
         } catch (err) {
           saveBtn.disabled = false;
@@ -338,7 +381,7 @@
   $('#detail-close').addEventListener('click', closeDetail);
   $('#detail-backdrop').addEventListener('click', closeDetail);
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !$('#detail').hidden) closeDetail();
+    if (e.key === 'Escape' && !$('#detail').hidden && !document.querySelector('.dv')) closeDetail();
   });
 
   state.status = $('#status').value;

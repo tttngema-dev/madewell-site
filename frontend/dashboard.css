@@ -167,3 +167,17 @@
 @media (max-width: 720px) {
   .dash-grid { grid-template-columns: 1fr; }
 }
+
+/* saved tender documents */
+.saved-docs { margin-top: 0.75rem; display: grid; gap: 0.5rem; border-top: 1px solid var(--line); padding-top: 0.75rem; }
+.saved-docs[hidden] { display: none; }
+.doc-line { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; background: var(--stage-2); border: 1px solid var(--line); border-radius: 10px; padding: 0.55rem 0.7rem; }
+.doc-info { min-width: 0; display: grid; }
+.doc-info strong { font-weight: 600; font-size: 0.92rem; overflow-wrap: anywhere; }
+.doc-info span { font-size: 0.78rem; color: var(--soft); }
+.doc-info span:empty { display: none; }
+.doc-line .btn { flex: none; }
+@media (max-width: 520px) { .doc-line { flex-direction: column; align-items: stretch; } .doc-line .btn { text-align: center; } }
+
+/* phones: the signed-in email in the header made the whole page wider than the screen */
+@media (max-width: 720px) { .nav-email.hide-m { display: none; } }

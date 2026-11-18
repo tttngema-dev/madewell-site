@@ -77,7 +77,7 @@ router.get('/account/saved', requireAuth, async (req, res) => {
 
 router.post('/account/saved', requireAuth, async (req, res) => {
   try {
-    const { ocid, title, buyer, closing_date, status } = req.body || {};
+    const { ocid, title, buyer, closing_date, status, documents } = req.body || {};
     if (!ocid) return res.status(400).json({ ok: false, error: 'ocid required' });
     const row = {
       user_id: req.user.id,
@@ -87,13 +87,24 @@ router.post('/account/saved', requireAuth, async (req, res) => {
       closing_date: closing_date || null,
       status: status || 'watching',
     };
-    const { data, error } = await supabase
+    // Keep the tender's document list so the dashboard can open them later.
+    const docs = Array.isArray(documents)
+      ? documents.slice(0, 100).filter((d) => d && d.url).map((d) => ({
+          id: d.id ?? null, title: String(d.title || 'Document').slice(0, 300),
+          url: String(d.url), format: d.format || '', datePublished: d.datePublished || null,
+        }))
+      : null;
+    let result = await supabase
       .from('saved_tenders')
-      .upsert(row, { onConflict: 'user_id,ocid' })
+      .upsert(docs ? { ...row, documents: docs } : row, { onConflict: 'user_id,ocid' })
       .select()
       .single();
-    if (error) throw error;
-    res.json({ ok: true, item: data });
+    // If the "documents" column hasn't been added yet (SQL not run), still save the tender.
+    if (result.error && docs && /documents/i.test(result.error.message || '')) {
+      result = await supabase.from('saved_tenders').upsert(row, { onConflict: 'user_id,ocid' }).select().single();
+    }
+    if (result.error) throw result.error;
+    res.json({ ok: true, item: result.data });
   } catch (err) {
     console.error('[saved post]', err.message);
     res.status(500).json({ ok: false, error: err.message || 'Could not save tender' });
