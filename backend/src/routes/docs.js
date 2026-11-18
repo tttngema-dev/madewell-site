@@ -55,7 +55,7 @@ router.get('/doc-proxy', async (req, res) => {
 // ---------------------------------------------------------------------------
 // Saved fill-in state  (one row per user + tender + document)
 // ---------------------------------------------------------------------------
-const MAX_STATE_BYTES = 400 * 1024;
+const MAX_STATE_BYTES = 700 * 1024;
 
 router.get('/account/doc-edits', requireAuth, async (req, res) => {
   try {

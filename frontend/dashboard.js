@@ -32,7 +32,7 @@
       await MWAuth.signOut();
       location.href = 'index.html';
     });
-    await Promise.all([loadSaved(), loadProfile()]);
+    await Promise.all([loadSaved(), loadProfile(), loadCompanyDocs(), loadSignature()]);
     autoOpenFromUrl();
   }
 
@@ -340,6 +340,179 @@
       }
     });
   }
+
+  // ===================================================================
+  // Company documents (CIPC, CSD, B-BBEE, CIDB, tax clearance …)
+  // ===================================================================
+  const DOC_TYPES = [
+    ['cipc', 'CIPC registration documents', 'Company registration certificate or CIPC disclosure'],
+    ['csd', 'CSD supplier summary report', 'Central Supplier Database report'],
+    ['tax', 'Tax compliance status / clearance', 'SARS tax compliance letter or TCS PIN'],
+    ['bbbee', 'B-BBEE certificate or affidavit', ''],
+    ['cidb', 'CIDB registration certificate', 'Construction tenders'],
+    ['vat', 'VAT registration certificate', ''],
+    ['coida', 'COIDA letter of good standing', 'Compensation Fund'],
+    ['bank', 'Bank confirmation letter', ''],
+    ['directors_id', 'Directors’ ID copies', ''],
+  ];
+  const MAX_UPLOAD = 8 * 1024 * 1024;
+  let cdocs = [];
+
+  const fmtSize = (n) => (n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round((n || 0) / 1024)) + ' KB');
+  const daysLeft = (iso) => (iso ? Math.ceil((new Date(iso + 'T23:59:59') - new Date()) / 86400000) : null);
+  function cdMsg(text, cls) { const m = $('#cdocs-msg'); m.hidden = !text; m.textContent = text || ''; m.className = 'form-msg ' + (cls || ''); }
+
+  function fileToBase64(blobOrFile) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(',')[1] || '');
+      r.onerror = () => reject(new Error('Could not read that file.'));
+      r.readAsDataURL(blobOrFile);
+    });
+  }
+  // Photos of paperwork: re-encode as a sensible-size JPEG. This also bakes in the phone's rotation,
+  // so the picture comes out the right way up inside the merged PDF.
+  async function prepareImage(file) {
+    const bmp = await createImageBitmap(file);
+    const k = Math.min(1, 2400 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(bmp.width * k)); c.height = Math.max(1, Math.round(bmp.height * k));
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.88));
+    return { blob, name: file.name.replace(/\.\w+$/, '') + '.jpg' };
+  }
+
+  async function uploadCompanyDoc(type, file, label) {
+    if (!file) return;
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    const isImg = /^image\/(jpeg|png)$/.test(file.type) || /\.(jpe?g|png)$/i.test(file.name);
+    if (!isPdf && !isImg) { cdMsg('Please choose a PDF, JPG or PNG file.', 'err'); return; }
+    let blob = file, name = file.name;
+    if (isImg) { try { const p = await prepareImage(file); blob = p.blob; name = p.name; } catch (_) { /* send as is */ } }
+    if (blob.size > MAX_UPLOAD) { cdMsg('That file is over 8 MB. Please upload a smaller scan.', 'err'); return; }
+    cdMsg('Uploading…');
+    try {
+      const b64 = await fileToBase64(blob);
+      await MWAuth.api('/api/account/company-docs', { method: 'POST', body: JSON.stringify({ doc_type: type, label: label || null, file_name: name, file_base64: b64 }) });
+      cdMsg('Uploaded ✓', 'ok');
+      await loadCompanyDocs(true);
+    } catch (err) { cdMsg(err.message || 'Upload failed.', 'err'); }
+  }
+
+  async function openCompanyDoc(id) {
+    const w = window.open('', '_blank'); // opened first so the browser doesn't block it
+    try {
+      const token = await MWAuth.getAccessToken();
+      const r = await fetch(MADEWELL.apiBase + '/api/account/company-docs/' + encodeURIComponent(id) + '/file', { headers: { Authorization: 'Bearer ' + token } });
+      if (!r.ok) throw new Error('Could not open that document.');
+      const url = URL.createObjectURL(await r.blob());
+      if (w) w.location = url; else { const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.click(); }
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) { if (w) w.close(); cdMsg(err.message, 'err'); }
+  }
+
+  function expiryBadge(iso) {
+    const d = daysLeft(iso);
+    if (d == null) return '';
+    if (d < 0) return '<span class="cdoc-badge bad">Expired</span>';
+    if (d <= 30) return '<span class="cdoc-badge warn">Expires in ' + d + (d === 1 ? ' day' : ' days') + '</span>';
+    return '';
+  }
+
+  function docRow(def, doc) {
+    const [type, title, hint] = def;
+    const row = document.createElement('div');
+    row.className = 'cdoc' + (doc ? ' has' : '');
+    row.innerHTML = `
+      <div class="cdoc-info">
+        <strong>${esc(doc && doc.label ? doc.label : title)}</strong>
+        ${doc ? `<span class="cdoc-file">✓ ${esc(doc.file_name || 'Uploaded')} · ${fmtSize(doc.size_bytes)} · ${esc(formatDate(doc.uploaded_at).split(',')[0])}</span>` : (hint ? `<small>${esc(hint)}</small>` : '<small>Not uploaded yet</small>')}
+      </div>
+      <div class="cdoc-act">
+        ${doc ? '<button type="button" class="btn small ghost-btn" data-a="view">View</button>' : ''}
+        <button type="button" class="btn small ${doc ? 'ghost-btn' : ''}" data-a="pick">${doc ? 'Replace' : 'Upload'}</button>
+        ${doc ? '<button type="button" class="linkish" data-a="del">Remove</button>' : ''}
+        <input type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" hidden>
+      </div>
+      ${doc ? `<div class="cdoc-exp"><label>Expires <input type="date" value="${esc(doc.expires_on || '')}" aria-label="Expiry date for ${esc(title)}"></label>${expiryBadge(doc.expires_on)}<small>Optional. We&rsquo;ll warn you before you attach an expired document.</small></div>` : ''}`;
+    const file = row.querySelector('input[type=file]');
+    row.querySelector('[data-a=pick]').addEventListener('click', () => file.click());
+    file.addEventListener('change', async () => { const f = file.files[0]; file.value = ''; row.classList.add('busy'); await uploadCompanyDoc(type, f, doc && doc.label); row.classList.remove('busy'); });
+    if (doc) {
+      row.querySelector('[data-a=view]').addEventListener('click', () => openCompanyDoc(doc.id));
+      row.querySelector('[data-a=del]').addEventListener('click', async () => {
+        if (!confirm('Remove “' + (doc.label || title) + '”?')) return;
+        try { await MWAuth.api('/api/account/company-docs/' + doc.id, { method: 'DELETE' }); await loadCompanyDocs(true); } catch (err) { cdMsg(err.message, 'err'); }
+      });
+      const exp = row.querySelector('input[type=date]');
+      exp.addEventListener('change', async () => {
+        try { await MWAuth.api('/api/account/company-docs/' + doc.id, { method: 'PATCH', body: JSON.stringify({ expires_on: exp.value || null }) }); cdMsg('Saved ✓', 'ok'); await loadCompanyDocs(true); }
+        catch (err) { cdMsg(err.message, 'err'); }
+      });
+    }
+    return row;
+  }
+
+  function renderCompanyDocs() {
+    const box = $('#cdocs');
+    box.innerHTML = '';
+    DOC_TYPES.forEach((def) => box.appendChild(docRow(def, cdocs.find((d) => d.doc_type === def[0]))));
+    // any number of "other" documents, each with its own name
+    cdocs.filter((d) => d.doc_type === 'other').forEach((d) => box.appendChild(docRow(['other', d.label || 'Other document', ''], d)));
+    const add = document.createElement('div');
+    add.className = 'cdoc-other';
+    add.innerHTML = `<strong>Another document</strong>
+      <div class="cdoc-other-row">
+        <input type="text" maxlength="80" placeholder="Name, e.g. Company profile or Reference letter" aria-label="Document name">
+        <button type="button" class="btn small">Choose file &amp; upload</button>
+        <input type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" hidden>
+      </div>`;
+    const nameIn = add.querySelector('input[type=text]'), file = add.querySelector('input[type=file]');
+    add.querySelector('button').addEventListener('click', () => { if (!nameIn.value.trim()) { nameIn.focus(); cdMsg('Give the document a name first.', 'err'); return; } cdMsg(''); file.click(); });
+    file.addEventListener('change', async () => { const f = file.files[0]; file.value = ''; add.classList.add('busy'); await uploadCompanyDoc('other', f, nameIn.value.trim()); add.classList.remove('busy'); });
+    box.appendChild(add);
+  }
+
+  async function loadCompanyDocs(keepMsg) {
+    try {
+      cdocs = (await MWAuth.api('/api/account/company-docs')).items || [];
+      if (!keepMsg) cdMsg('');
+    } catch (err) {
+      cdocs = [];
+      cdMsg(err.message || 'Could not load your documents.', 'err');
+    }
+    renderCompanyDocs();
+  }
+
+  // ===================================================================
+  // Signature
+  // ===================================================================
+  let mySig = null;
+  function sgMsg(text, cls) { const m = $('#sig-msg'); m.hidden = !text; m.textContent = text || ''; m.className = 'form-msg ' + (cls || ''); }
+  function renderSignature() {
+    const pv = $('#sig-preview');
+    pv.innerHTML = mySig ? `<img alt="Your signature" src="${esc(mySig.png)}">` : '<p class="muted">No signature yet.</p>';
+    $('#sig-draw').textContent = mySig ? 'Draw a new one' : 'Draw signature';
+    $('#sig-remove').hidden = !mySig;
+  }
+  async function loadSignature() {
+    try { mySig = (await MWAuth.api('/api/account/signature')).signature || null; } catch (_) { mySig = null; }
+    renderSignature();
+  }
+  $('#sig-draw').addEventListener('click', () => {
+    sgMsg('');
+    MWDocViewer.signaturePad({
+      title: mySig ? 'Draw a new signature' : 'Draw your signature', useLabel: 'Save signature', saveToggle: false,
+      onDone: async (sig) => { mySig = { png: sig.url, width: sig.w, height: sig.h }; renderSignature(); sgMsg('Signature saved ✓', 'ok'); },
+    });
+  });
+  $('#sig-remove').addEventListener('click', async () => {
+    if (!confirm('Remove your saved signature? Documents you have already signed keep theirs.')) return;
+    try { await MWAuth.api('/api/account/signature', { method: 'DELETE' }); mySig = null; renderSignature(); sgMsg('Removed.', 'ok'); }
+    catch (err) { sgMsg(err.message, 'err'); }
+  });
 
   init();
 })();

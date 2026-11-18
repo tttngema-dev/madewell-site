@@ -103,6 +103,112 @@
   }
 
 
+  // ---------------------------------------------------------------- signatures
+  // Signatures are small transparent PNGs. They are registered here (decoded once) so the stamp
+  // renderer, the page overlay and the PDF export can all use them synchronously.
+  const sigStore = new Map(); // key -> { url, w, h, img }
+  function sigHash(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return 's' + (h >>> 0).toString(36) + str.length.toString(36); }
+  function registerSig(url, w, h, key) {
+    key = key || sigHash(url);
+    if (sigStore.has(key)) return Promise.resolve(key);
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => { sigStore.set(key, { url, w: w || img.naturalWidth, h: h || img.naturalHeight, img }); resolve(key); };
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+  }
+  function dataUrlBytes(u) { const b = atob(String(u).split(',')[1] || ''); const out = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) out[i] = b.charCodeAt(i); return out; }
+  function drawSig(ctx, s, cx, top, boxW, boxH) {
+    const k = Math.min(boxW / s.w, boxH / s.h), w = s.w * k, h = s.h * k;
+    ctx.drawImage(s.img, cx - w / 2, top + (boxH - h) / 2, w, h);
+  }
+
+  /** Signature pad dialog. opt = { host, existing:{url,w,h}, saveToggle, title, useLabel, onDone(sig, savedToProfile) } */
+  function openSigDialog(opt) {
+    const host = opt.host || document.body, ex = opt.existing;
+    const dlg = document.createElement('div');
+    dlg.className = 'dv-email dv-sigdlg' + (host === document.body ? ' dv-modal-fixed' : '');
+    dlg.innerHTML = `<div class="dv-email-card dv-sig-card" role="dialog" aria-label="Your signature">
+      <h3>${esc(opt.title || 'Your signature')}</h3>
+      ${ex ? `<div class="dv-sig-saved"><div class="dv-sig-saved-img"><img alt="Your saved signature" src="${esc(ex.url)}"></div><button type="button" class="dv-btn dv-primary" data-g="use-saved">Use this signature</button><p class="dv-email-note">Or draw a new one below.</p></div>` : ''}
+      <p class="dv-sig-lab">Sign with your finger or mouse</p>
+      <div class="dv-sig-pad"><canvas aria-label="Signature pad"></canvas><span class="dv-sig-base" aria-hidden="true">&#10005;</span></div>
+      ${opt.saveToggle ? '<label class="dv-check"><input type="checkbox" name="save" checked> Save it to my profile for next time</label>' : ''}
+      <p class="dv-email-msg" role="status" hidden></p>
+      <div class="dv-email-actions"><button type="button" class="dv-btn" data-g="cancel">Cancel</button><button type="button" class="dv-btn" data-g="clear">Clear</button><button type="button" class="dv-btn dv-primary" data-g="use">${esc(opt.useLabel || 'Use signature')}</button></div>
+    </div>`;
+    host.appendChild(dlg);
+    const cv = dlg.querySelector('canvas'), ctx = cv.getContext('2d'), msg = dlg.querySelector('.dv-email-msg');
+    const INK = '#10205c';
+    const dpr = Math.min(global.devicePixelRatio || 1, 3);
+    function size() {
+      const r = cv.getBoundingClientRect();
+      cv.width = Math.max(300, Math.round(r.width * dpr)); cv.height = Math.max(120, Math.round(r.height * dpr));
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = 2.8 * dpr; ctx.strokeStyle = INK; ctx.fillStyle = INK;
+    }
+    size();
+    let drawing = false, last = null, mid = null, ink = false;
+    const pos = (e) => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * cv.width / r.width, y: (e.clientY - r.top) * cv.height / r.height }; };
+    cv.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+      drawing = true; ink = true; last = mid = pos(e);
+      ctx.beginPath(); ctx.arc(last.x, last.y, ctx.lineWidth / 2, 0, Math.PI * 2); ctx.fill();
+      msg.hidden = true;
+    });
+    cv.addEventListener('pointermove', (e) => {
+      if (!drawing) return;
+      const p = pos(e), m = { x: (last.x + p.x) / 2, y: (last.y + p.y) / 2 };
+      ctx.beginPath(); ctx.moveTo(mid.x, mid.y); ctx.quadraticCurveTo(last.x, last.y, m.x, m.y); ctx.stroke();
+      last = p; mid = m;
+    });
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((ev) => cv.addEventListener(ev, () => { drawing = false; }));
+
+    function exportSig() {
+      if (!ink) return null;
+      const w = cv.width, h = cv.height, d = ctx.getImageData(0, 0, w, h).data;
+      let x0 = w, y0 = h, x1 = -1, y1 = -1;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+      if (x1 < 0 || (x1 - x0 < 12 && y1 - y0 < 12)) return null;
+      const pad = Math.round(6 * dpr);
+      x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(w - 1, x1 + pad); y1 = Math.min(h - 1, y1 + pad);
+      const cw = x1 - x0 + 1, ch = y1 - y0 + 1, k = Math.min(1, 560 / cw, 220 / ch);
+      const out = document.createElement('canvas'); out.width = Math.max(1, Math.round(cw * k)); out.height = Math.max(1, Math.round(ch * k));
+      const octx = out.getContext('2d'); octx.imageSmoothingQuality = 'high';
+      octx.drawImage(cv, x0, y0, cw, ch, 0, 0, out.width, out.height);
+      return { url: out.toDataURL('image/png'), w: out.width, h: out.height };
+    }
+    const say = (t, cls) => { msg.hidden = !t; msg.textContent = t || ''; msg.className = 'dv-email-msg ' + (cls || ''); };
+    const onEsc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); finish(); } };
+    function finish() { document.removeEventListener('keydown', onEsc, true); dlg.remove(); }
+    document.addEventListener('keydown', onEsc, true);
+
+    dlg.addEventListener('click', async (e) => {
+      if (e.target === dlg) { finish(); return; }
+      const b = e.target.closest('[data-g]'); if (!b) return;
+      const g = b.dataset.g;
+      if (g === 'cancel') finish();
+      else if (g === 'clear') { ctx.clearRect(0, 0, cv.width, cv.height); ink = false; say(''); }
+      else if (g === 'use-saved') { finish(); opt.onDone(ex, true); }
+      else if (g === 'use') {
+        const sig = exportSig();
+        if (!sig) { say('Please draw your signature first.', 'err'); return; }
+        const wantSave = opt.saveToggle ? dlg.querySelector('[name=save]').checked : true;
+        let saved = false;
+        if (wantSave) {
+          b.disabled = true; say('Saving…');
+          try { await MWAuth.api('/api/account/signature', { method: 'PUT', body: JSON.stringify({ png: sig.url, width: sig.w, height: sig.h }) }); saved = true; }
+          catch (err) {
+            b.disabled = false;
+            if (!opt.saveToggle) { say(err.message || 'Could not save your signature.', 'err'); return; }
+            console.warn('[docviewer] signature save failed:', err.message);
+          }
+        }
+        finish(); opt.onDone(sig, saved);
+      }
+    });
+  }
+
   // ---------------------------------------------------------------- company stamp
   const STAMP_COLORS = { blue: '#1f3fa8', black: '#1b1b1b', red: '#c0262d' };
   const STAMP_FONT = 'Arial, Helvetica, sans-serif';
@@ -179,7 +285,8 @@
         arcText(ctx, bottom, cx, cy, rTop + bp * 0.72, Math.PI / 2, false);
       }
       // centre: date between two rules, other details above
-      const mid = details.slice(1, 3);
+      const sg = spec.sigKey && sigStore.get(spec.sigKey);
+      const mid = sg ? [] : details.slice(1, 3);
       ctx.font = '700 62px ' + STAMP_FONT;
       const dW = Math.min(440, Math.max(260, ctx.measureText(date).width + 40));
       ctx.lineWidth = 5;
@@ -190,6 +297,7 @@
         ctx.font = '600 ' + fit.px + 'px ' + STAMP_FONT;
         ctx.fillText(fit.lines[0], cx, mid.length === 1 ? cy - 70 : cy - 70 - (mid.length - 1 - i) * 42);
       });
+      if (sg) drawSig(ctx, sg, cx, cy - 200, 330, 140);
       return c;
     }
 
@@ -199,7 +307,8 @@
     const nameFit = fitLines(tmp, name, maxW, 88, 44, 2, '800');
     const nameLH = nameFit.px * 1.14;
     const detFit = details.map((d) => fitLines(tmp, d, maxW, 36, 22, 1, '500'));
-    let H = PAD + nameFit.lines.length * nameLH + 38 + (details.length ? 18 + details.length * 46 : 0) + (date ? 34 + 96 : 0) + PAD - 10;
+    const sgR = spec.sigKey && sigStore.get(spec.sigKey);
+    let H = PAD + nameFit.lines.length * nameLH + 38 + (details.length ? 18 + details.length * 46 : 0) + (sgR ? 170 : 0) + (date ? 34 + 96 : 0) + PAD - 10;
     H = Math.max(H, 260);
     const c = mk(W, Math.round(H)), ctx = c.getContext('2d');
     ctx.fillStyle = ctx.strokeStyle = color; ctx.globalAlpha = 0.93; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
@@ -214,6 +323,7 @@
       y += 14;
       detFit.forEach((f, i) => { ctx.font = '500 ' + f.px + 'px ' + STAMP_FONT; y += 46; ctx.fillText(f.lines[0], W / 2, y - 12); });
     }
+    if (sgR) { drawSig(ctx, sgR, W / 2, y + 10, maxW * 0.7, 150); y += 170; }
     if (date) {
       y += 22;
       ctx.lineWidth = 4;
@@ -240,6 +350,7 @@
       tool: null, // 'text' | 'tick' | 'date' | {profile: 'value'}
       selected: null, lastFocus: null, dirty: false, user: null, profile: null,
       saveMode: 'server', closed: false,
+      sigs: {}, sig: null, lastSig: null,
     };
     const prevOverflow = document.body.style.overflow;
 
@@ -263,6 +374,7 @@
         <button type="button" class="dv-tool" data-tool="tick" title="Click on the page to place a tick">✓ Tick</button>
         <button type="button" class="dv-tool" data-tool="date" title="Click on the page to place today's date">Date</button>
         <button type="button" class="dv-tool" data-tool="stamp" title="Add your company stamp (name, date and details)">&#9635; Stamp</button>
+        <button type="button" class="dv-tool" data-tool="sign" title="Sign with your finger or mouse">&#9998; Sign</button>
         <span class="dv-sep"></span>
         <button type="button" class="dv-btn dv-ico" data-act="size-down" aria-label="Smaller text" title="Smaller text">A−</button>
         <button type="button" class="dv-btn dv-ico" data-act="size-up" aria-label="Larger text" title="Larger text">A+</button>
@@ -335,7 +447,12 @@
 
     // ------------------------------------------------------------ persistence
     const localKey = () => 'mwdoc:' + (state.user ? state.user.id : 'anon') + ':' + o.ocid + ':' + o.url;
-    function snapshot() { return { v: 1, items: state.items, fields: state.fields, defaultSize: state.defaultSize }; }
+    function usedSigs() {
+      const out = {};
+      state.items.forEach((i) => { const k = i.type === 'signature' ? i.sigKey : (i.type === 'stamp' && i.spec && i.spec.sigKey); if (k && state.sigs[k]) out[k] = state.sigs[k]; });
+      return out;
+    }
+    function snapshot() { return { v: 1, items: state.items, fields: state.fields, defaultSize: state.defaultSize, sigs: usedSigs() }; }
     function setStatus(text, cls) { if (statusEl) { statusEl.textContent = text; statusEl.className = 'dv-status ' + (cls || ''); } }
 
     async function saveNow() {
@@ -372,7 +489,22 @@
         state.items = Array.isArray(saved.items) ? saved.items : [];
         state.fields = saved.fields && typeof saved.fields === 'object' ? saved.fields : {};
         if (saved.defaultSize) state.defaultSize = saved.defaultSize;
+        if (saved.sigs && typeof saved.sigs === 'object') {
+          await Promise.all(Object.entries(saved.sigs).map(async ([k, v]) => {
+            if (v && typeof v.url === 'string' && v.url.startsWith('data:image/png')) { state.sigs[k] = v; await registerSig(v.url, v.w, v.h, k); }
+          }));
+        }
       }
+    }
+    async function loadAccountSig() {
+      try {
+        const r = await MWAuth.api('/api/account/signature');
+        const sg = r.signature;
+        if (sg && sg.png) {
+          const key = await registerSig(sg.png, sg.width, sg.height);
+          if (key) state.sig = { key, url: sg.png, w: sg.width || sigStore.get(key).w, h: sg.height || sigStore.get(key).h };
+        }
+      } catch (_) { /* no signature saved yet, or the table is missing */ }
     }
 
     // ------------------------------------------------------------ rendering
@@ -510,6 +642,13 @@
         img.src = stampUrl(it.spec); img.alt = 'Company stamp'; img.draggable = false;
         wrap.insertBefore(img, wrap.firstChild);
         wrap.tabIndex = 0;
+      } else if (it.type === 'signature') {
+        const sg = sigStore.get(it.sigKey) || state.sigs[it.sigKey];
+        const img = document.createElement('img');
+        if (sg) img.src = sg.url;
+        img.alt = 'Your signature'; img.draggable = false;
+        wrap.insertBefore(img, wrap.firstChild);
+        wrap.tabIndex = 0;
       } else {
         const ta = document.createElement('textarea');
         ta.value = it.text || '';
@@ -580,10 +719,12 @@
       touch();
     }
 
-    function addItem(type, p, x, y, text, spec) {
+    function addItem(type, p, x, y, text, spec, sigKey) {
       const size = state.defaultSize;
       const it = { id: uid(), type, page: p.n, x, y, size, text: text || '' };
-      if (type === 'stamp') {
+      if (type === 'signature') {
+        const sg = state.sigs[sigKey]; it.sigKey = sigKey; it.w = 140; it.h = it.w * (sg ? sg.h / sg.w : 0.4);
+      } else if (type === 'stamp') {
         it.spec = spec; it.w = spec.shape === 'round' ? 130 : 190; it.h = it.w * stampAspect(spec);
       } else if (type === 'tick') { it.w = size * 1.5; it.h = size * 1.5; }
       else {
@@ -603,10 +744,12 @@
 
     function setTool(t) {
       state.tool = t;
-      root.querySelectorAll('.dv-tool').forEach((b) => b.classList.toggle('on', (typeof t === 'string' && b.dataset.tool === t) || (!!t && typeof t === 'object' && !!t.stamp && b.dataset.tool === 'stamp')));
+      const tn = typeof t === 'string' ? t : t && t.stamp ? 'stamp' : t && t.sign ? 'sign' : null;
+      root.querySelectorAll('.dv-tool').forEach((b) => b.classList.toggle('on', !!tn && b.dataset.tool === tn));
       root.classList.toggle('dv-placing', !!t);
       hintEl.textContent = !t ? defaultHint()
         : (typeof t === 'object' && t.stamp) ? 'Tap on the page where the stamp should go.'
+        : (typeof t === 'object' && t.sign) ? 'Tap on the page where your signature should go.'
         : typeof t === 'object' ? 'Now tap on the page where “' + truncate(t.value, 40) + '” should go.'
           : t === 'text' ? 'Tap on the page where you want to type.' : t === 'tick' ? 'Tap on the page where the tick should go.' : 'Tap on the page where the date should go.';
     }
@@ -629,6 +772,10 @@
         const spec = (typeof t === 'object' && t.stamp) || state.stampSpec;
         const w = spec.shape === 'round' ? 130 : 190;
         addItem('stamp', p, x - w / 2, y - (w * stampAspect(spec)) / 2, '', spec);
+      }
+      else if (typeof t === 'object' && t.sign) {
+        const sg = state.sigs[t.sign], w = 140, h = w * (sg ? sg.h / sg.w : 0.4);
+        addItem('signature', p, x - w / 2, y - h / 2, '', null, t.sign);
       }
       else if (t === 'tick') addItem('tick', p, x - 8, y - 8);
       else if (t === 'date') addItem('text', p, x, y - 8, todayText());
@@ -706,6 +853,7 @@
       // 2. free text / ticks / dates
       const font = await doc.embedFont(L.StandardFonts.Helvetica);
       const black = L.rgb(0.04, 0.04, 0.12);
+      const sigImgs = new Map();
       const drawItem = async (it) => {
         const p = state.pages[it.page - 1];
         if (!p) return;
@@ -713,6 +861,15 @@
         const vp = p.vp1; // viewport at scale 1 (handles page rotation + crop box)
         const rot = p.rotation || 0;
         const toPdf = (x, y) => vp.convertToPdfPoint(x, y);
+        if (it.type === 'signature') {
+          const sg = state.sigs[it.sigKey] || sigStore.get(it.sigKey);
+          if (!sg) return;
+          let img = sigImgs.get(it.sigKey);
+          if (!img) { img = await doc.embedPng(dataUrlBytes(sg.url)); sigImgs.set(it.sigKey, img); }
+          const [px, py] = toPdf(it.x, it.y + it.h);
+          page.drawImage(img, { x: px, y: py, width: it.w, height: it.h, rotate: L.degrees(rot) });
+          return;
+        }
         if (it.type === 'stamp') {
           const blob = await new Promise((res) => renderStamp(it.spec).toBlob(res, 'image/png'));
           const img = await doc.embedPng(new Uint8Array(await blob.arrayBuffer()));
@@ -750,9 +907,120 @@
     async function doDownload(btn) {
       if (!state.bytes) return;
       if (!editable) { download(new Uint8Array(state.bytes), slug(o.title) + '.pdf'); return; }
-      await withBusy(btn, 'Preparing…', async () => {
-        try { const out = await buildFilledPdf(); download(out, slug(o.title) + '-filled.pdf'); }
-        catch (err) { alert('Could not prepare the PDF: ' + err.message); }
+      openDownload();
+    }
+
+    // ------------------------------------------------------------ attach company documents
+    const DOC_ORDER = ['cipc', 'csd', 'tax', 'bbbee', 'cidb', 'vat', 'coida', 'bank', 'directors_id', 'other'];
+    const DOC_LABELS = { cipc: 'CIPC registration', csd: 'CSD supplier report', tax: 'Tax compliance / clearance', bbbee: 'B-BBEE certificate', cidb: 'CIDB certificate', vat: 'VAT certificate', coida: 'COIDA letter of good standing', bank: 'Bank confirmation letter', directors_id: 'Directors’ ID copies', other: 'Other document' };
+    const docName = (d) => d.label || DOC_LABELS[d.doc_type] || 'Document';
+    const sortDocs = (list) => list.slice().sort((a, b) => (DOC_ORDER.indexOf(a.doc_type) - DOC_ORDER.indexOf(b.doc_type)) || String(a.uploaded_at).localeCompare(String(b.uploaded_at)));
+    const fmtSize = (n) => (n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB');
+    function daysLeft(iso) { return iso ? Math.ceil((new Date(iso + 'T23:59:59') - new Date()) / 86400000) : null; }
+
+    async function fetchCompanyDoc(d) {
+      const token = await MWAuth.getAccessToken();
+      const r = await fetch(API + '/api/account/company-docs/' + encodeURIComponent(d.id) + '/file', { headers: { Authorization: 'Bearer ' + token } });
+      if (!r.ok) throw new Error('download failed');
+      return new Uint8Array(await r.arrayBuffer());
+    }
+
+    /** The filled-in tender document, followed by the chosen company documents, as ONE pdf. */
+    async function buildMergedPdf(docs, progress) {
+      const L = global.PDFLib;
+      const out = await L.PDFDocument.load(await buildFilledPdf(), { ignoreEncryption: true });
+      const failed = [];
+      let n = 0;
+      for (const d of docs) {
+        n++; if (progress) progress(n, docs.length, docName(d));
+        try {
+          const bytes = await fetchCompanyDoc(d);
+          if (d.mime_type === 'application/pdf') {
+            const src = await L.PDFDocument.load(bytes, { ignoreEncryption: true });
+            (await out.copyPages(src, src.getPageIndices())).forEach((pg) => out.addPage(pg));
+          } else {
+            const img = d.mime_type === 'image/png' ? await out.embedPng(bytes) : await out.embedJpg(bytes);
+            const PW = 595.28, PH = 841.89, M = 36;
+            const k = Math.min((PW - 2 * M) / img.width, (PH - 2 * M) / img.height, 1.5);
+            const w = img.width * k, h = img.height * k;
+            const pg = out.addPage([PW, PH]);
+            pg.drawImage(img, { x: (PW - w) / 2, y: (PH - h) / 2, width: w, height: h });
+          }
+        } catch (err) { console.warn('[docviewer] attach', docName(d), err); failed.push(docName(d)); }
+      }
+      if (failed.length) throw new Error('Could not attach: ' + failed.join(', ') + '. Untick ' + (failed.length > 1 ? 'them' : 'it') + ' or upload a fresh copy in your Company profile.');
+      return out.save();
+    }
+
+    function openDownload() {
+      const memKey = 'mwattach:' + (state.user ? state.user.id : 'anon');
+      let mem = {}; try { mem = JSON.parse(localStorage.getItem(memKey) || '{}') || {}; } catch (_) {}
+      const dlg = document.createElement('div');
+      dlg.className = 'dv-email dv-dldlg';
+      dlg.innerHTML = `<form class="dv-email-card dv-dl-card" novalidate>
+        <h3>Download</h3>
+        <label class="dv-opt"><input type="radio" name="mode" value="asis"><span><b>Download as is</b><small>Just this document, with everything you filled in.</small></span></label>
+        <label class="dv-opt"><input type="radio" name="mode" value="attach"><span><b>Attach my company documents</b><small>Choose which ones to add. They are merged behind this document into one PDF.</small></span></label>
+        <div class="dv-dl-list" hidden></div>
+        <p class="dv-email-msg" role="status" hidden></p>
+        <div class="dv-email-actions"><button type="button" class="dv-btn" data-d="cancel">Cancel</button><button type="submit" class="dv-btn dv-primary">Download PDF</button></div>
+      </form>`;
+      root.appendChild(dlg);
+      const form = dlg.querySelector('form'), list = dlg.querySelector('.dv-dl-list'), msg = dlg.querySelector('.dv-email-msg'), go = form.querySelector('[type=submit]');
+      const say = (t, cls) => { msg.hidden = !t; msg.textContent = t || ''; msg.className = 'dv-email-msg ' + (cls || ''); };
+      let docs = null;
+      form.mode.value = mem.mode === 'attach' ? 'attach' : 'asis';
+
+      function renderList() {
+        if (docs === null) { list.innerHTML = '<p class="dv-email-note">Loading your documents…</p>'; return; }
+        if (docs === false) { list.innerHTML = '<p class="dv-email-note">Could not load your documents. Check your connection and try again.</p>'; return; }
+        if (!docs.length) { list.innerHTML = '<p class="dv-email-note">You haven’t uploaded any company documents yet. <a class="dv-linkbtn" href="dashboard.html#profile" target="_blank" rel="noopener">Upload them in your Company profile</a>, then come back.</p>'; return; }
+        const keep = new Set(Array.isArray(mem.ids) ? mem.ids : []);
+        list.innerHTML = '<button type="button" class="dv-linkbtn dv-dl-all" data-d="all">Select all</button>' + sortDocs(docs).map((d) => {
+          const dl = daysLeft(d.expires_on);
+          const badge = dl == null ? '' : dl < 0 ? '<em class="dv-bad">Expired</em>' : dl <= 30 ? '<em class="dv-warn">Expires in ' + dl + (dl === 1 ? ' day' : ' days') + '</em>' : '';
+          return `<label class="dv-dl-row"><input type="checkbox" value="${esc(d.id)}" ${keep.has(d.id) ? 'checked' : ''}><span class="dv-dl-name"><b>${esc(docName(d))}</b><small>${esc(d.file_name || '')} · ${fmtSize(d.size_bytes || 0)}</small></span>${badge}</label>`;
+        }).join('');
+      }
+      function sync() {
+        const attach = form.mode.value === 'attach';
+        list.hidden = !attach; go.textContent = attach ? 'Download merged PDF' : 'Download PDF'; say('');
+      }
+      form.addEventListener('change', sync);
+      dlg.addEventListener('click', (e) => {
+        if (e.target === dlg || e.target.closest('[data-d=cancel]')) { dlg.remove(); return; }
+        if (e.target.closest('[data-d=all]')) {
+          const boxes = list.querySelectorAll('input[type=checkbox]'); const all = [...boxes].every((b) => b.checked);
+          boxes.forEach((b) => { b.checked = !all; });
+        }
+      });
+      renderList(); sync();
+      MWAuth.api('/api/account/company-docs').then((r) => { docs = r.items || []; }).catch(() => { docs = false; }).then(renderList);
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const attach = form.mode.value === 'attach';
+        go.disabled = true;
+        try {
+          if (!attach) {
+            go.textContent = 'Preparing…';
+            download(await buildFilledPdf(), slug(o.title) + '-filled.pdf');
+            try { localStorage.setItem(memKey, JSON.stringify({ mode: 'asis', ids: mem.ids || [] })); } catch (_) {}
+            dlg.remove(); return;
+          }
+          if (!docs || !docs.length) { say(docs === null ? 'Still loading your documents…' : 'Upload your company documents first, or choose “Download as is”.', 'err'); return; }
+          const ids = [...list.querySelectorAll('input[type=checkbox]:checked')].map((b) => b.value);
+          const chosen = sortDocs(docs).filter((d) => ids.includes(d.id));
+          if (!chosen.length) { say('Tick at least one document to attach.', 'err'); return; }
+          const expired = chosen.filter((d) => { const n = daysLeft(d.expires_on); return n != null && n < 0; });
+          if (expired.length && !confirm(expired.map(docName).join(', ') + (expired.length > 1 ? ' are' : ' is') + ' past the expiry date you set. Attach anyway?')) return;
+          go.textContent = 'Merging…';
+          const out = await buildMergedPdf(chosen, (i, n, name) => say('Adding ' + name + ' (' + i + ' of ' + n + ')…'));
+          download(out, slug(o.title) + '-with-documents.pdf');
+          try { localStorage.setItem(memKey, JSON.stringify({ mode: 'attach', ids })); } catch (_) {}
+          dlg.remove();
+        } catch (err) { say(err.message || 'Could not prepare the PDF.', 'err'); }
+        finally { go.disabled = false; sync(); }
       });
     }
 
@@ -762,7 +1030,8 @@
       const p = state.profile || {};
       let saved = null;
       try { saved = JSON.parse(localStorage.getItem('mwstamp:' + (state.user ? state.user.id : 'anon')) || 'null'); } catch (_) {}
-      return Object.assign({ shape: 'rect', color: 'blue', name: p.registered_name || p.trading_name || '', use: { reg: true, vat: false, addr: false, tel: false, date: true } }, saved || {});
+      const base = { shape: 'rect', color: 'blue', name: p.registered_name || p.trading_name || '', use: { reg: true, vat: false, addr: false, tel: false, date: true, sig: false } };
+      return Object.assign(base, saved || {}, { use: Object.assign(base.use, (saved && saved.use) || {}) });
     }
     function stampDetails(p, use) {
       const out = [];
@@ -779,15 +1048,16 @@
       const cfg = stampDefaults();
       const dlg = document.createElement('div');
       dlg.className = 'dv-email dv-stampdlg';
-      const has = { reg: !!p.cipc_number, vat: !!p.vat_number, addr: !!(p.address_line1 || p.city), tel: !!p.contact_phone };
-      const opt = (k, label, val) => `<label class="dv-check ${has[k] ? '' : 'off'}"><input type="checkbox" data-use="${k}" ${cfg.use[k] && has[k] ? 'checked' : ''} ${has[k] ? '' : 'disabled'}> ${label}${has[k] ? '' : ' <em>(add in your profile)</em>'}</label>`;
+      const curSig = state.sig || state.lastSig;
+      const has = { reg: !!p.cipc_number, vat: !!p.vat_number, addr: !!(p.address_line1 || p.city), tel: !!p.contact_phone, sig: !!curSig };
+      const opt = (k, label, hint) => `<label class="dv-check ${has[k] ? '' : 'off'}"><input type="checkbox" data-use="${k}" ${cfg.use[k] && has[k] ? 'checked' : ''} ${has[k] ? '' : 'disabled'}> ${label}${has[k] ? '' : ' <em>(' + (hint || 'add in your profile') + ')</em>'}</label>`;
       dlg.innerHTML = `<form class="dv-email-card dv-stamp-card" novalidate>
         <h3>Company stamp</h3>
         <div class="dv-stamp-prev"><img alt="Stamp preview"></div>
         <div class="dv-seg" role="group" aria-label="Shape"><button type="button" data-shape="rect">Rectangle</button><button type="button" data-shape="round">Round</button></div>
         <label>Company name <input type="text" name="name" maxlength="80" value="${esc(cfg.name)}" placeholder="Your company name"></label>
         <div class="dv-stamp-opts">
-          ${opt('reg', 'Registration no.')}${opt('vat', 'VAT no.')}${opt('addr', 'Address')}${opt('tel', 'Phone')}
+          ${opt('reg', 'Registration no.')}${opt('vat', 'VAT no.')}${opt('addr', 'Address')}${opt('tel', 'Phone')}${opt('sig', 'My signature', 'tap ✎ Sign first')}
           <label class="dv-check"><input type="checkbox" data-use="date" ${cfg.use.date ? 'checked' : ''}> Date <input type="text" name="date" class="dv-date" value="${esc(stampDate())}" maxlength="20" aria-label="Stamp date"></label>
         </div>
         <div class="dv-swatches" role="group" aria-label="Ink colour">
@@ -801,7 +1071,7 @@
       const form = dlg.querySelector('form'), img = dlg.querySelector('.dv-stamp-prev img');
       const spec = () => {
         const use = {}; dlg.querySelectorAll('[data-use]').forEach((c) => { use[c.dataset.use] = c.checked; });
-        return { use, spec: { shape: cfg.shape, color: cfg.color, name: form.name.value, date: use.date ? form.date.value : '', details: stampDetails(p, use) } };
+        return { use, spec: { shape: cfg.shape, color: cfg.color, name: form.name.value, date: use.date ? form.date.value : '', details: stampDetails(p, use), sigKey: use.sig && curSig ? curSig.key : '' } };
       };
       const paint = () => {
         dlg.querySelectorAll('[data-shape]').forEach((b) => b.classList.toggle('on', b.dataset.shape === cfg.shape));
@@ -819,12 +1089,29 @@
         const { use, spec: sp } = spec();
         if (!sp.name.trim()) { form.name.focus(); return; }
         try { localStorage.setItem('mwstamp:' + (state.user ? state.user.id : 'anon'), JSON.stringify({ shape: cfg.shape, color: cfg.color, name: sp.name, use })); } catch (_) {}
+        if (sp.sigKey && curSig) state.sigs[sp.sigKey] = { url: curSig.url, w: curSig.w, h: curSig.h };
         state.stampSpec = sp;
         dlg.remove();
         setTool({ stamp: sp });
       });
       paint();
       form.name.focus();
+    }
+
+    // ------------------------------------------------------------ signature
+    function openSign() {
+      const ex = state.sig || null;
+      openSigDialog({
+        host: root, existing: ex, saveToggle: true,
+        onDone: async (sig, saved) => {
+          const key = await registerSig(sig.url, sig.w, sig.h);
+          if (!key) return;
+          const rec = { key, url: sig.url, w: sig.w, h: sig.h };
+          state.sigs[key] = { url: sig.url, w: sig.w, h: sig.h };
+          state.lastSig = rec; if (saved) state.sig = rec;
+          setTool({ sign: key });
+        },
+      });
     }
 
     // ------------------------------------------------------------ email dialog
@@ -917,6 +1204,7 @@
       const t = e.target.closest('[data-act],[data-tool]');
       if (!t || !root.contains(t)) return;
       if (t.dataset.tool === 'stamp') { openStamp(); return; }
+      if (t.dataset.tool === 'sign') { openSign(); return; }
       if (t.dataset.tool) { setTool(state.tool === t.dataset.tool ? null : t.dataset.tool); return; }
       switch (t.dataset.act) {
         case 'zoom-in': state.zoom = Math.min(3, state.zoom + 0.25); relayout(); break;
@@ -930,12 +1218,12 @@
         case 'profile-toggle': { const pr = $('.dv-profile'); pr.hidden = !pr.hidden; if (state.pdf) setTimeout(() => { if (Math.abs(fitScale() - state.scale) > 0.01) relayout(); }, 0); break; }
         case 'size-up': case 'size-down': {
           const d = t.dataset.act === 'size-up' ? 1 : -1;
-          const it = state.items.find((i) => i.id === state.selected && i.type !== 'tick' && i.type !== 'stamp') || null;
+          const it = state.items.find((i) => i.id === state.selected && i.type !== 'tick' && i.type !== 'stamp' && i.type !== 'signature') || null;
           const tick = state.items.find((i) => i.id === state.selected && i.type === 'tick') || null;
           if (it) { it.size = Math.max(6, Math.min(28, it.size + d)); state.defaultSize = it.size; const el = root.querySelector('.dv-item[data-id="' + it.id + '"] textarea'); if (el) el.style.fontSize = it.size * state.scale + 'px'; touch(); }
-          else if (state.items.find((i) => i.id === state.selected && i.type === 'stamp')) {
+          else if (state.items.find((i) => i.id === state.selected && (i.type === 'stamp' || i.type === 'signature'))) {
             const st = state.items.find((i) => i.id === state.selected); const k = d > 0 ? 1.12 : 1 / 1.12;
-            const nw = Math.max(70, Math.min(420, st.w * k)); st.h = st.h * (nw / st.w); st.w = nw;
+            const nw = Math.max(50, Math.min(420, st.w * k)); st.h = st.h * (nw / st.w); st.w = nw;
             root.querySelector('.dv-item[data-id="' + st.id + '"]')._place(); touch();
           }
           else if (tick) { tick.size = Math.max(6, Math.min(28, tick.size + d)); tick.w = tick.h = tick.size * 1.5; root.querySelector('.dv-item[data-id="' + tick.id + '"]')._place(); touch(); }
@@ -952,7 +1240,7 @@
     $('.dv-close').addEventListener('click', close);
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
-      const sd = root.querySelector('.dv-stampdlg'); if (sd) { sd.remove(); return; }
+      const sd = root.querySelector('.dv-stampdlg, .dv-sigdlg, .dv-dldlg'); if (sd) { sd.remove(); return; }
       if (emailEl && !emailEl.hidden) { emailEl.hidden = true; return; }
       if (state.tool) { setTool(null); return; }
       close();
@@ -1036,7 +1324,7 @@
           }));
         }
         state.pages = infos;
-        if (editable) await loadSaved();
+        if (editable) await Promise.all([loadAccountSig(), loadSaved()]);
         btnDownload.disabled = false; if (btnEmail) btnEmail.disabled = false;
         pagesEl.innerHTML = '';
         // open the quick-fill side panel first (desktop) so pages are sized to the space that is left
@@ -1065,5 +1353,5 @@
     return !!d.url;
   }
 
-  global.MWDocViewer = { open, canPreview };
+  global.MWDocViewer = { open, canPreview, signaturePad: (opt) => openSigDialog(Object.assign({ host: document.body }, opt || {})) };
 })(window);

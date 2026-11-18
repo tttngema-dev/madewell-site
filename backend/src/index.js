@@ -10,6 +10,7 @@ import { beneficialRouter } from './routes/beneficial.js';
 import { tendersRouter } from './routes/tenders.js';
 import { accountRouter } from './routes/account.js';
 import { docsRouter } from './routes/docs.js';
+import { companyDocsRouter } from './routes/companyDocs.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -29,6 +30,7 @@ const originOk = (origin) => !origin || originRules.some((r) => (typeof r === 's
 app.use(cors({ origin: (origin, cb) => cb(null, originOk(origin)), credentials: true }));
 app.use('/api/bo', express.json({ limit: '15mb' }), beneficialRouter);
 app.use('/api/account/docs/email', express.json({ limit: '20mb' })); // filled PDFs arrive as base64
+app.use('/api/account/company-docs', express.json({ limit: '14mb' })); // uploaded scans arrive as base64
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/health', (_req, res) =>
@@ -44,6 +46,7 @@ app.use('/api', adminRouter);
 app.use('/api', tendersRouter);
 app.use('/api', accountRouter);
 app.use('/api', docsRouter);
+app.use('/api', companyDocsRouter);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

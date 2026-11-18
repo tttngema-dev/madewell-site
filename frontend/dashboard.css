@@ -182,3 +182,36 @@
   .top nav .btn.small { white-space: nowrap; padding: 0.45rem 0.95rem; }
   html, body { overflow-x: hidden; }
 }
+
+/* ---- company documents + signature (profile tab) ---- */
+.cdocs-wrap { display: grid; gap: 0.75rem; align-content: start; min-width: 0; }
+.cdocs { display: grid; gap: 0.6rem; }
+.cdoc { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.5rem 1rem; align-items: center; background: var(--stage); border: 1px solid var(--line); border-radius: 12px; padding: 0.75rem 0.9rem; }
+.cdoc.has { border-color: rgba(127, 224, 164, 0.45); }
+.cdoc-info { min-width: 0; display: grid; gap: 0.15rem; }
+.cdoc-info strong { font-size: 0.95rem; font-weight: 600; }
+.cdoc-info small { font-size: 0.78rem; color: var(--soft); overflow-wrap: anywhere; }
+.cdoc-file { font-size: 0.8rem; color: #7fe0a4; overflow-wrap: anywhere; }
+.cdoc-act { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.cdoc-exp { grid-column: 1 / -1; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.8rem; color: var(--soft); }
+.cdoc-exp input[type=date] { font: inherit; font-size: 0.85rem; color: #1d1d1d; background: var(--paper); border: 2px solid transparent; border-radius: 8px; padding: 0.25rem 0.5rem; }
+.cdoc-exp input[type=date]:focus { outline: none; border-color: var(--gold); }
+.cdoc-badge { font-size: 0.72rem; font-weight: 700; padding: 0.15rem 0.55rem; border-radius: 999px; }
+.cdoc-badge.bad { background: #7a2a2a; color: #ffd6d0; }
+.cdoc-badge.warn { background: var(--bulb); color: #1a1200; }
+.cdoc .btn.small { padding: 0.4rem 0.85rem; font-size: 0.85rem; }
+.cdoc .linkish { font-size: 0.85rem; }
+.cdoc-other { display: grid; gap: 0.6rem; background: transparent; border: 1.5px dashed var(--line); border-radius: 12px; padding: 0.75rem 0.9rem; }
+.cdoc-other-row { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
+.cdoc-other-row input[type=text] { flex: 1 1 12rem; min-width: 0; font: inherit; font-size: 0.95rem; color: #1d1d1d; background: var(--paper); border: 2px solid transparent; border-radius: 10px; padding: 0.5rem 0.75rem; }
+.cdoc-other-row input[type=text]:focus { outline: none; border-color: var(--gold); }
+.cdoc.busy { opacity: 0.6; pointer-events: none; }
+.sig-box { display: grid; gap: 0.75rem; align-content: start; }
+.sig-preview { background: #fff; border-radius: 12px; min-height: 7rem; display: grid; place-items: center; padding: 0.8rem; }
+.sig-preview img { max-width: 100%; max-height: 8rem; display: block; }
+.sig-preview .muted { color: #6a7390; }
+.sig-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+@media (max-width: 560px) { .cdoc { grid-template-columns: minmax(0, 1fr); } .cdoc-act { justify-content: flex-start; } }
+.cdoc button.linkish { background: none; border: 0; color: var(--soft); font: inherit; font-size: 0.85rem; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; padding: 0.4rem; }
+.cdoc button.linkish:hover { color: #ff8a7a; }
+.cdoc-exp label { display: flex; align-items: center; gap: 0.5rem; }

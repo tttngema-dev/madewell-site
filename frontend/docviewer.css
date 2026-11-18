@@ -134,3 +134,43 @@ button.dv-w.on { background: rgba(255, 211, 107, 0.6); }
 /* tall dialogs on small screens: scroll from the top instead of clipping the heading */
 .dv-email { align-items: flex-start; }
 .dv-email-card { margin: auto; }
+
+/* ---- signature items (placed like a stamp) ---- */
+.dv-item-signature { background: transparent; border: 1px solid transparent; border-radius: 3px; cursor: grab; touch-action: none; }
+.dv-item-signature img { width: 100%; height: 100%; display: block; user-select: none; -webkit-user-drag: none; pointer-events: none; }
+.dv-item-signature.sel { outline: 2px solid var(--gold); background: rgba(255, 236, 150, 0.3); border: 1px dashed rgba(179, 107, 0, 0.9); }
+
+/* ---- dialogs that sit over the whole page (dashboard) ---- */
+.dv-modal-fixed { position: fixed; z-index: 120; }
+
+/* ---- signature pad ---- */
+.dv-sig-card { max-height: calc(100vh - 2rem); overflow: auto; }
+.dv-sig-lab { font-size: 0.85rem; color: var(--soft); margin: 0; }
+.dv-sig-pad { position: relative; background: #fff; border-radius: 12px; border: 2px solid var(--line); overflow: hidden; }
+.dv-sig-pad canvas { display: block; width: 100%; height: 190px; touch-action: none; cursor: crosshair; }
+.dv-sig-base { position: absolute; left: 14px; bottom: 34px; color: #b8bfd0; font-size: 1rem; pointer-events: none; }
+.dv-sig-pad::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: 32px; border-bottom: 1.5px dashed #c9cfdd; pointer-events: none; }
+.dv-sig-saved { display: grid; gap: 0.6rem; padding-bottom: 0.9rem; border-bottom: 1px solid var(--line); }
+.dv-sig-saved-img { background: #fff; border-radius: 10px; padding: 0.6rem; display: grid; place-items: center; min-height: 5rem; }
+.dv-sig-saved-img img { max-width: 100%; max-height: 7rem; display: block; }
+
+/* ---- download chooser ---- */
+.dv-dl-card { max-height: calc(100vh - 2rem); overflow: auto; }
+.dv-opt { display: flex !important; align-items: flex-start; gap: 0.7rem; padding: 0.75rem 0.85rem; background: var(--stage); border: 1.5px solid var(--line); border-radius: 11px; cursor: pointer; color: var(--paper); }
+.dv-opt:has(input:checked) { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.dv-opt input { margin-top: 0.25rem; accent-color: var(--gold); flex: none; }
+.dv-opt span { display: grid; gap: 0.15rem; }
+.dv-opt b { font-weight: 700; font-size: 0.98rem; }
+.dv-opt small { color: var(--soft); font-size: 0.82rem; line-height: 1.4; }
+.dv-dl-list { display: grid; gap: 0.4rem; max-height: 17rem; overflow: auto; padding: 0.15rem; }
+.dv-dl-list[hidden] { display: none; }
+.dv-dl-all { justify-self: end; font-size: 0.82rem; }
+.dv-dl-row { display: flex !important; align-items: center; gap: 0.65rem; padding: 0.55rem 0.7rem; background: var(--stage); border: 1.5px solid var(--line); border-radius: 10px; cursor: pointer; color: var(--paper); }
+.dv-dl-row:has(input:checked) { border-color: var(--gold); }
+.dv-dl-row input { accent-color: var(--gold); width: 1.1rem; height: 1.1rem; flex: none; }
+.dv-dl-name { display: grid; min-width: 0; flex: 1; }
+.dv-dl-name b { font-weight: 600; font-size: 0.92rem; }
+.dv-dl-name small { color: var(--soft); font-size: 0.76rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dv-dl-row em { font-style: normal; font-size: 0.72rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 999px; flex: none; }
+.dv-dl-row em.dv-bad { background: #7a2a2a; color: #ffd6d0; }
+.dv-dl-row em.dv-warn { background: var(--bulb); color: #1a1200; }

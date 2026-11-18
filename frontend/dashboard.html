@@ -132,6 +132,32 @@
             <button class="btn" type="submit">Save profile</button>
           </div>
         </form>
+
+        <section class="pf-section" id="docs-section">
+          <div class="pf-head">
+            <h3>Company documents</h3>
+            <p>Upload each one once. When you download a tender document you can attach any of these to it, merged into a single PDF. PDF, JPG or PNG, up to 8&nbsp;MB each.</p>
+          </div>
+          <div class="cdocs-wrap">
+            <p id="cdocs-msg" class="form-msg" role="status" hidden></p>
+            <div id="cdocs" class="cdocs"><p class="muted">Loading…</p></div>
+          </div>
+        </section>
+
+        <section class="pf-section" id="sig-section">
+          <div class="pf-head">
+            <h3>Signature</h3>
+            <p>Draw it once with your finger or mouse. It&rsquo;s ready to sign any tender document, and can go on your company stamp.</p>
+          </div>
+          <div class="sig-box">
+            <div class="sig-preview" id="sig-preview"><p class="muted">Loading…</p></div>
+            <div class="sig-actions">
+              <button type="button" class="btn small" id="sig-draw">Draw signature</button>
+              <button type="button" class="btn small ghost-btn" id="sig-remove" hidden>Remove</button>
+            </div>
+            <p id="sig-msg" class="form-msg" role="status" hidden></p>
+          </div>
+        </section>
       </section>
     </div>
   </main>
