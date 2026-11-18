@@ -155,3 +155,85 @@
 .detail-panel .docs .doc-meta { display: block; color: var(--soft); font-size: 0.8rem; margin-top: 0.15rem; }
 .detail-panel .save-row { margin-top: 2rem; padding-top: 1.25rem; border-top: 1px solid var(--line); }
 @media (max-width: 640px) { .tab { padding: 0.6rem 0.7rem; font-size: 0.9rem; } .detail-panel .d-grid .brief-extra { grid-template-columns: 1fr; } }
+
+/* ---- Card v2: buyer header + NEW stamp ---- */
+.tender-card { padding: 0; gap: 0; position: relative; overflow: visible; }
+.tender-card .buyer-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+  background: linear-gradient(90deg, rgba(245,166,35,0.22), rgba(245,166,35,0.07));
+  border-bottom: 1px solid rgba(245,166,35,0.35); border-radius: 13px 13px 0 0;
+  padding: 0.7rem 1.4rem; 
+}
+.tender-card .buyer-name {
+  color: var(--bulb); font-weight: 700; font-size: 0.95rem; letter-spacing: 0.01em;
+  text-transform: uppercase; line-height: 1.25; min-width: 0; overflow-wrap: anywhere;
+}
+.tender-card .card-body { display: grid; gap: 0.6rem; padding: 1.1rem 1.4rem 1.25rem; }
+.tender-card .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.tender-card .chips:empty { display: none; }
+.tender-card .meta-line .ref { font-weight: 500; }
+.tender-card.is-closed { opacity: 0.8; }
+.tender-card.is-closed .buyer-head { background: rgba(255,255,255,0.05); border-bottom-color: var(--line); }
+.tender-card.is-closed .buyer-name { color: var(--soft); }
+.tender-card.is-new { border-color: rgba(255,90,60,0.55); }
+
+.stamp-new {
+  position: absolute; top: -12px; right: 14px; z-index: 2; pointer-events: none;
+  transform: rotate(7deg); display: grid; justify-items: center; line-height: 1;
+  padding: 0.28rem 0.7rem 0.3rem; color: #ff5a3c; background: rgba(10,18,40,0.92);
+  border: 2.5px solid #ff5a3c; border-radius: 8px;
+  box-shadow: inset 0 0 0 2px rgba(10,18,40,0.92), inset 0 0 0 3.5px #ff5a3c, 0 3px 10px rgba(255,90,60,0.35);
+  font-family: var(--serif, Georgia, serif); text-transform: uppercase;
+}
+.stamp-new b { font-size: 1.15rem; letter-spacing: 0.18em; font-weight: 800; padding-left: 0.18em; }
+.stamp-new i { font-style: normal; font-family: inherit; font-size: 0.58rem; letter-spacing: 0.12em; font-weight: 700; margin-top: 0.15rem; opacity: 0.9; }
+
+/* ---- Phone ---- */
+@media (max-width: 640px) {
+  .tenders-hero h1 { font-size: 1.9rem; }
+  .tenders-hero .lead { font-size: 1rem; }
+  .filters-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+  .filters-row label { min-width: 0; }
+  .filters-row select { width: 100%; min-width: 0; padding: 0.6rem 0.6rem; font-size: 16px; }
+  .search-row input[type="search"] { font-size: 16px; padding: 0.8rem 0.9rem; }
+  .tenders-meta { font-size: 0.88rem; }
+  .tenders-list { gap: 1.1rem; }
+  .tender-card { border-radius: 14px; margin-top: 0.15rem; }
+  .tender-card .buyer-head { padding: 0.6rem 0.9rem; border-radius: 13px 13px 0 0; }
+  .tender-card .buyer-name { font-size: 0.82rem; }
+  .tender-card .card-body { padding: 0.9rem 0.9rem 1rem; gap: 0.55rem; }
+  .tender-card h3 { font-size: 1.05rem; }
+  .tender-card .card-desc { -webkit-line-clamp: 2; font-size: 0.9rem; }
+  .tender-card .meta-line { flex-direction: column; gap: 0.3rem; font-size: 0.85rem; }
+  .stamp-new { right: 10px; top: -14px; padding: 0.22rem 0.55rem 0.25rem; }
+  .stamp-new b { font-size: 1rem; }
+  .tender-card.is-new .buyer-head { padding-right: 5.2rem; }
+  .pager .btn { flex: 1; text-align: center; padding: 0.75rem 1rem; }
+  .pager #page-label { order: -1; width: 100%; text-align: center; }
+  /* detail panel becomes a bottom sheet */
+  .detail-panel {
+    top: auto; bottom: 0; right: 0; left: 0; width: 100%; height: 92dvh; max-height: 92dvh;
+    border-left: 0; border-top: 1px solid var(--line); border-radius: 18px 18px 0 0;
+    padding: 0.5rem 1rem calc(2rem + env(safe-area-inset-bottom)); box-shadow: 0 -12px 40px rgba(0,0,0,0.5);
+  }
+  .detail-panel::before { content: ''; display: block; width: 44px; height: 4px; border-radius: 4px; background: var(--line); margin: 0.35rem auto 0.6rem; }
+  .detail-close { top: 0.5rem; width: 2.6rem; height: 2.6rem; }
+  .detail-panel h2 { font-size: 1.25rem; margin-right: 3rem; }
+  .tabs { position: sticky; top: 0; background: var(--stage); z-index: 1; overflow-x: auto; margin-top: 0.75rem; }
+  .tab { flex: 1; white-space: nowrap; text-align: center; padding: 0.75rem 0.5rem; }
+  .detail-panel .d-grid div { grid-template-columns: 1fr; gap: 0.1rem; }
+  .detail-panel .d-grid .lab { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .detail-panel .docs a { padding: 0.9rem; }
+}
+
+/* global `section{padding:4.5rem 1.5rem}` was adding a big gap around these */
+.tenders-meta, .tenders-list { padding: 0; }
+.tender-card.is-new .buyer-head { padding-right: 6.4rem; }
+
+/* phone: keep the header inside the screen (it was ~35px too wide, which zoomed the whole page out) */
+@media (max-width: 640px) {
+  .top { padding: 0.5rem 1rem; }
+  .top nav { gap: 0.7rem; }
+  .top nav a.btn.small { padding: 0.45rem 0.9rem; }
+  html, body { overflow-x: hidden; }
+}

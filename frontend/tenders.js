@@ -34,6 +34,13 @@
     if (b.compulsory === false) return { label: 'Yes — not compulsory', cls: 'yes' };
     return { label: 'Yes', cls: 'yes' };
   }
+  function newAgo(iso) {
+    const h = Math.max(0, Math.round((Date.now() - new Date(iso)) / 3600000));
+    if (h < 1) return 'just in';
+    if (h < 24) return h + 'h ago';
+    const d = Math.floor(h / 24);
+    return d + 'd ago';
+  }
   function formatValue(n, currency) {
     if (n == null || n === 0) return null;
     try {
@@ -119,7 +126,7 @@
       btn.type = 'button';
       btn.className = 'tender-card';
       const statusBadge = t.status === 'closed' ? '<span class="badge closed">Closed</span>' : '<span class="badge open">Open</span>';
-      const newBadge = t.isNew ? '<span class="badge new">New</span>' : '';
+      const stamp = t.isNew ? '<span class="stamp-new" aria-label="New tender"><b>NEW</b><i>' + esc(newAgo(t.published)) + '</i></span>' : '';
       const provBadge = t.province ? '<span class="badge prov">' + esc(t.province) + '</span>' : '';
       const brief = t.briefing && t.briefing.required === true
         ? '<span class="badge brief">' + (t.briefing.compulsory ? 'Compulsory briefing' : 'Briefing') + '</span>' : '';
@@ -127,17 +134,21 @@
       const val = formatValue(t.valueZar, t.currency);
       const closeCls = closingClass(t.closingDate);
       const desc = truncate(t.description, 180);
-      const province = '';
+      btn.classList.toggle('is-new', !!t.isNew);
+      btn.classList.toggle('is-closed', t.status === 'closed');
       btn.innerHTML =
-        '<div class="row-top"><span class="ref">' + esc(t.id || t.ocid) + '</span><span class="badges">' + newBadge + statusBadge + provBadge + brief + catBadge + '</span></div>' +
+        stamp +
+        '<div class="buyer-head"><span class="buyer-name">' + esc(t.buyer || 'Buyer not listed') + '</span>' + statusBadge + '</div>' +
+        '<div class="card-body">' +
         '<h3>' + esc(t.title) + '</h3>' +
         (desc ? '<p class="card-desc">' + esc(desc) + '</p>' : '') +
-        '<p class="buyer">' + esc(t.buyer || 'Buyer not listed') + (province ? ' · <span class="province">' + province + '</span>' : '') + '</p>' +
+        '<div class="chips">' + provBadge + brief + catBadge + '</div>' +
         '<div class="meta-line">' +
         '<span class="closing ' + closeCls + '"><strong>' + esc(closingLabel(t.closingDate)) + '</strong> · ' + esc(formatDate(t.closingDate)) + '</span>' +
+        '<span class="ref">Ref: ' + esc(t.id || t.ocid) + '</span>' +
         (val ? '<span>Est. ' + esc(val) + '</span>' : '') +
         (t.documentCount ? '<span>' + t.documentCount + ' document' + (t.documentCount === 1 ? '' : 's') + '</span>' : '') +
-        '</div>';
+        '</div></div>';
       btn.addEventListener('click', () => openDetail(t));
       results.appendChild(btn);
     });

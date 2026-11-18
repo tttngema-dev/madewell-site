@@ -11,20 +11,24 @@ import https from 'https';
 import { URL } from 'url';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 const execFileAsync = promisify(execFile);
 const router = Router();
 const OCDS_BASE = process.env.OCDS_BASE || 'https://ocds-api.etenders.gov.za/api/OCDSReleases';
 
 const UPSTREAM_PAGE_SIZE = 10;
-const MAX_ITEMS = 1500;
+const MAX_CLOSED_AGE_DAYS = 365; // no cap on open tenders; only prune very old closed ones
+const MAX_PAGES_PER_WINDOW = 25; // 10 per page -> up to 250 per window
 const REQUEST_TIMEOUT_MS = 12000;
-const CONCURRENCY = 3; // parallel upstream calls (the API is flaky, keep it gentle)
+const CONCURRENCY = 4; // parallel upstream calls (the API is flaky, keep it gentle)
 const CACHE_TTL_MS = 30 * 60 * 1000; // serve cache for 30 minutes
 const STALE_OK_MS = 6 * 60 * 60 * 1000; // after that still serve stale while refreshing
 const FAST_BUDGET_MS = 9000; // cold fill must finish under this
-const EXPAND_BUDGET_MS = 60000;
-const REFRESH_BUDGET_MS = 25000;
+const EXPAND_BUDGET_MS = 5 * 60 * 1000;
+const REFRESH_BUDGET_MS = 60000;
 
 const SA_PROVINCES = [
   'Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu-Natal',
@@ -46,19 +50,19 @@ const addDays = (d, n) => new Date(d.getTime() + n * DAY);
 function buildWindows(now = new Date()) {
   const out = [];
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  // Tier 1: last 14 days – 2-day windows stepping by 1 day (overlap is harmless, we de-dupe),
+  // Tier 1: last 30 days – 2-day windows stepping by 1 day (overlap is harmless, we de-dupe),
   // multi-page. This is where nearly all still-open tenders live.
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < 30; i++) {
     const from = addDays(today, -i - 1);
-    out.push({ from: ymd(from), to: ymd(addDays(from, 1)), pages: 3, tier: 'day' });
+    out.push({ from: ymd(from), to: ymd(addDays(from, 1)), pages: MAX_PAGES_PER_WINDOW, tier: 'day' });
   }
-  // Tier 2: days 14–60 in 3-day windows.
-  for (let i = 14; i < 60; i += 3) {
-    out.push({ from: ymd(addDays(today, -i - 3)), to: ymd(addDays(today, -i)), pages: 2, tier: '3day' });
+  // Tier 2: days 30–90 in 3-day windows.
+  for (let i = 30; i < 90; i += 3) {
+    out.push({ from: ymd(addDays(today, -i - 3)), to: ymd(addDays(today, -i)), pages: 12, tier: '3day' });
   }
-  // Tier 3: 60–180 days in weekly windows.
-  for (let i = 60; i < 180; i += 7) {
-    out.push({ from: ymd(addDays(today, -i - 7)), to: ymd(addDays(today, -i)), pages: 1, tier: 'week' });
+  // Tier 3: 90–210 days in weekly windows.
+  for (let i = 90; i < 210; i += 7) {
+    out.push({ from: ymd(addDays(today, -i - 7)), to: ymd(addDays(today, -i)), pages: 6, tier: 'week' });
   }
   return out;
 }
@@ -321,10 +325,11 @@ function serialize(item, now = Date.now()) {
   let status = 'open';
   if (CLOSED_STATUSES.has(item.baseStatus)) status = 'closed';
   else if (end && !Number.isNaN(end) && end < now) status = 'closed';
+  // NEW = published in the last 72 hours AND still open for bids.
   let isNew = false;
-  if (item.published) {
+  if (item.published && status === 'open') {
     const pub = new Date(item.published).getTime();
-    if (!Number.isNaN(pub)) isNew = (now - pub) / DAY <= 7;
+    if (!Number.isNaN(pub)) isNew = now - pub <= 3 * DAY && pub <= now + DAY;
   }
   return { ...item, status, isNew };
 }
@@ -411,23 +416,17 @@ function mergeIntoStore(releases) {
       changed += 1;
     }
   }
-  if (changed) store.updatedAt = Date.now();
+  if (changed) { store.updatedAt = Date.now(); saveSnapshotSoon(); }
   evictIfNeeded();
   return changed;
 }
 
-/** Keep the store bounded: drop the oldest closed tenders first, then the oldest of anything. */
+/** No cap on how many tenders we hold. Only very old closed ones are pruned. */
 function evictIfNeeded() {
-  if (store.byOcid.size <= MAX_ITEMS) return;
+  const cutoff = new Date(Date.now() - MAX_CLOSED_AGE_DAYS * DAY).toISOString();
   const now = Date.now();
-  const all = Array.from(store.byOcid.values()).map((it) => ({ it, s: serialize(it, now) }));
-  all.sort((a, b) => {
-    if ((a.s.status === 'closed') !== (b.s.status === 'closed')) return a.s.status === 'closed' ? -1 : 1;
-    return (a.it.published || '').localeCompare(b.it.published || '');
-  });
-  for (const { it } of all) {
-    if (store.byOcid.size <= MAX_ITEMS) break;
-    store.byOcid.delete(it.ocid);
+  for (const [k, it] of store.byOcid) {
+    if ((it.published || '') && it.published < cutoff && serialize(it, now).status === 'closed') store.byOcid.delete(k);
   }
 }
 
@@ -437,11 +436,18 @@ async function pullWindow(w) {
   let got = false;
   for (let page = 1; page <= (w.pages || 1); page++) {
     let pkg;
-    try {
-      pkg = await fetchPage(w.from, w.to, page);
-    } catch (err) {
-      store.lastError = err.message;
-      break; // upstream often 500s past page 1 – that's fine, keep what we have
+    let lastErr;
+    for (let attempt = 0; attempt < 3 && !pkg; attempt++) {
+      try {
+        pkg = await fetchPage(w.from, w.to, page);
+      } catch (err) {
+        lastErr = err;
+        await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+      }
+    }
+    if (!pkg) {
+      store.lastError = lastErr && lastErr.message;
+      break; // upstream sometimes 500s on deep pages – keep what we have
     }
     const rel = (pkg && pkg.releases) || [];
     mergeIntoStore(rel);
@@ -551,6 +557,26 @@ async function ensureStore() {
   if (store.byOcid.size > 0 && !store.refreshing) expandFill('full').catch(() => {});
   return store.byOcid.size ? 'filled' : 'empty';
 }
+
+// ---- disk snapshot: survive restarts so the list is full immediately ----
+const SNAP = path.join(os.tmpdir(), 'madewell-tenders-cache.json');
+function loadSnapshot() {
+  try {
+    const j = JSON.parse(fs.readFileSync(SNAP, 'utf8'));
+    for (const it of j.items || []) if (it && it.ocid) store.byOcid.set(it.ocid, it);
+    store.updatedAt = j.savedAt || 0;
+    evictIfNeeded();
+  } catch { /* no snapshot yet */ }
+}
+let snapTimer = null;
+function saveSnapshotSoon() {
+  if (snapTimer) return;
+  snapTimer = setTimeout(() => {
+    snapTimer = null;
+    try { fs.writeFileSync(SNAP, JSON.stringify({ savedAt: Date.now(), items: Array.from(store.byOcid.values()) })); } catch { /* ignore */ }
+  }, 5000);
+}
+loadSnapshot();
 
 // Warm the cache shortly after process start (non-blocking)
 setTimeout(() => {
