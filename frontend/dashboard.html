@@ -31,130 +31,106 @@
 
   <main class="dash-main">
     <header class="dash-hero">
-      <h1>Your dashboard</h1>
-      <p class="lead">Saved tenders, company profile, and upcoming deadlines.</p>
+      <div>
+        <p class="dash-eyebrow">Dashboard</p>
+        <h1>Welcome back<span id="hello-name"></span></h1>
+        <p class="lead">Track the tenders you&rsquo;re chasing, fill in their documents, and keep your company details ready.</p>
+      </div>
+      <a class="btn" href="tenders.html">Find tenders</a>
     </header>
 
-    <div class="dash-grid">
-      <section class="dash-panel" id="panel-deadlines">
-        <h2>Upcoming deadlines</h2>
-        <div id="deadlines" class="stack"><p class="muted">Loading…</p></div>
-      </section>
+    <section class="stats" id="stats" aria-label="Summary">
+      <div class="stat"><span class="stat-n" data-stat="saved">–</span><span class="stat-l">Saved tenders</span></div>
+      <div class="stat stat-warn"><span class="stat-n" data-stat="soon">–</span><span class="stat-l">Closing within 7 days</span></div>
+      <div class="stat"><span class="stat-n" data-stat="progress">–</span><span class="stat-l">Applying or submitted</span></div>
+      <div class="stat stat-good"><span class="stat-n" data-stat="won">–</span><span class="stat-l">Won</span></div>
+    </section>
 
-      <section class="dash-panel" id="panel-saved">
-        <div class="panel-head">
-          <h2>Saved tenders</h2>
-          <a class="btn small" href="tenders.html">Browse tenders</a>
+    <div class="dash-tabs" role="tablist" aria-label="Dashboard sections">
+      <button type="button" role="tab" id="tabbtn-tenders" aria-controls="tab-tenders" aria-selected="true" data-tab="tenders">Saved tenders <span class="tab-count" id="count-saved"></span></button>
+      <button type="button" role="tab" id="tabbtn-profile" aria-controls="tab-profile" aria-selected="false" data-tab="profile">Company profile <span class="tab-meter" id="profile-meter" title="Profile completeness"></span></button>
+    </div>
+
+    <div id="tab-tenders" class="tab-pane" role="tabpanel" aria-labelledby="tabbtn-tenders">
+      <div class="tenders-layout">
+        <section class="card" id="panel-saved" aria-label="Saved tenders">
+          <div class="filter-chips" id="saved-filters" role="group" aria-label="Filter saved tenders"></div>
+          <div id="saved-list" class="saved-list"><p class="muted">Loading…</p></div>
+        </section>
+        <aside class="card side" id="panel-deadlines" aria-label="Closing soon">
+          <h2>Closing soon</h2>
+          <p class="side-sub">Next 14 days</p>
+          <div id="deadlines" class="deadline-list"><p class="muted">Loading…</p></div>
+        </aside>
+      </div>
+    </div>
+
+    <div id="tab-profile" class="tab-pane" role="tabpanel" aria-labelledby="tabbtn-profile" hidden>
+      <section class="card profile-card" id="panel-profile">
+        <div class="profile-top">
+          <div>
+            <h2>Company profile</h2>
+            <p class="fine">Saved once, ready to drop into any tender form &mdash; and used for your company stamp.</p>
+          </div>
+          <div class="complete" aria-live="polite"><span class="complete-bar"><i id="complete-fill"></i></span><span id="complete-text">0% complete</span></div>
         </div>
-        <div id="saved-list" class="stack"><p class="muted">Loading…</p></div>
-      </section>
-
-      <section class="dash-panel full" id="panel-profile">
-        <h2>Company profile</h2>
-        <p class="fine">Reusable details for tender forms. Stored securely against your account.</p>
-        <form id="profile-form" class="profile-form">
-          <fieldset>
-            <legend>Company</legend>
-            <div class="form-row">
-              <label>Registered name
-                <input name="registered_name" type="text" autocomplete="organization" />
-              </label>
-              <label>Trading name
-                <input name="trading_name" type="text" />
-              </label>
+        <form id="profile-form" class="profile-form" novalidate>
+          <section class="pf-section">
+            <div class="pf-head"><h3>Company</h3><p>Your legal details, as they appear on CIPC documents.</p></div>
+            <div class="pf-fields">
+              <label>Registered name<input name="registered_name" type="text" autocomplete="organization" /></label>
+              <label>Trading name<input name="trading_name" type="text" /></label>
+              <label>CIPC / registration number<input name="cipc_number" type="text" /></label>
+              <label>Industries<input name="industries" type="text" placeholder="Construction, Cleaning, IT" /><small>Separate with commas</small></label>
             </div>
-            <div class="form-row">
-              <label>CIPC / registration number
-                <input name="cipc_number" type="text" />
-              </label>
-              <label>Industries (comma-separated)
-                <input name="industries" type="text" placeholder="Construction, Cleaning, IT" />
-              </label>
-            </div>
-          </fieldset>
-          <fieldset>
-            <legend>Contact &amp; address</legend>
-            <div class="form-row">
-              <label>Email
-                <input name="contact_email" type="email" />
-              </label>
-              <label>Phone
-                <input name="contact_phone" type="tel" />
-              </label>
-            </div>
-            <label>Address line 1
-              <input name="address_line1" type="text" />
-            </label>
-            <label>Address line 2
-              <input name="address_line2" type="text" />
-            </label>
-            <div class="form-row">
-              <label>City
-                <input name="city" type="text" />
-              </label>
+          </section>
+          <section class="pf-section">
+            <div class="pf-head"><h3>Contact &amp; address</h3><p>Used for bid forms and the company stamp.</p></div>
+            <div class="pf-fields">
+              <label>Email<input name="contact_email" type="email" autocomplete="email" /></label>
+              <label>Phone<input name="contact_phone" type="tel" autocomplete="tel" /></label>
+              <label class="span-all">Address line 1<input name="address_line1" type="text" autocomplete="address-line1" /></label>
+              <label class="span-all">Address line 2<input name="address_line2" type="text" autocomplete="address-line2" /></label>
+              <label>City<input name="city" type="text" autocomplete="address-level2" /></label>
               <label>Province
                 <select name="province">
-                  <option value="">—</option>
-                  <option>Eastern Cape</option>
-                  <option>Free State</option>
-                  <option>Gauteng</option>
-                  <option>KwaZulu-Natal</option>
-                  <option>Limpopo</option>
-                  <option>Mpumalanga</option>
-                  <option>North West</option>
-                  <option>Northern Cape</option>
-                  <option>Western Cape</option>
+                  <option value="">Select…</option>
+                  <option>Eastern Cape</option><option>Free State</option><option>Gauteng</option><option>KwaZulu-Natal</option>
+                  <option>Limpopo</option><option>Mpumalanga</option><option>North West</option><option>Northern Cape</option><option>Western Cape</option>
                 </select>
               </label>
-              <label>Postal code
-                <input name="postal_code" type="text" />
-              </label>
+              <label>Postal code<input name="postal_code" type="text" autocomplete="postal-code" /></label>
             </div>
-          </fieldset>
-          <fieldset>
-            <legend>Tax &amp; compliance</legend>
-            <div class="form-row">
-              <label>Tax number
-                <input name="tax_number" type="text" />
-              </label>
-              <label>VAT number
-                <input name="vat_number" type="text" />
-              </label>
-            </div>
-            <div class="form-row">
+          </section>
+          <section class="pf-section">
+            <div class="pf-head"><h3>Tax &amp; compliance</h3><p>The numbers almost every tender form asks for.</p></div>
+            <div class="pf-fields">
+              <label>Tax number<input name="tax_number" type="text" /></label>
+              <label>VAT number<input name="vat_number" type="text" /></label>
               <label>B-BBEE level
                 <select name="bbbee_level">
-                  <option value="">—</option>
+                  <option value="">Select…</option>
                   <option>1</option><option>2</option><option>3</option><option>4</option>
                   <option>5</option><option>6</option><option>7</option><option>8</option>
                   <option>Non-compliant</option>
                 </select>
               </label>
-              <label>CIDB grade
-                <input name="cidb_grade" type="text" placeholder="e.g. 4CE" />
-              </label>
-              <label>CIDB number
-                <input name="cidb_number" type="text" />
-              </label>
+              <label>CIDB grade<input name="cidb_grade" type="text" placeholder="e.g. 4CE" /></label>
+              <label>CIDB number<input name="cidb_number" type="text" /></label>
             </div>
-          </fieldset>
-          <fieldset>
-            <legend>Banking (optional)</legend>
-            <div class="form-row">
-              <label>Bank
-                <input name="bank_name" type="text" />
-              </label>
-              <label>Account number
-                <input name="bank_account" type="text" autocomplete="off" />
-              </label>
-              <label>Branch code
-                <input name="bank_branch" type="text" />
-              </label>
+          </section>
+          <section class="pf-section">
+            <div class="pf-head"><h3>Banking <span class="opt">Optional</span></h3><p>Only used to help you fill in tender forms. Never shown publicly.</p></div>
+            <div class="pf-fields">
+              <label>Bank<input name="bank_name" type="text" /></label>
+              <label>Account number<input name="bank_account" type="text" autocomplete="off" inputmode="numeric" /></label>
+              <label>Branch code<input name="bank_branch" type="text" inputmode="numeric" /></label>
             </div>
-            <p class="fine">Banking details are only used to help fill tender forms. Never share them in public listings.</p>
-          </fieldset>
-          <p id="profile-msg" class="form-msg" role="status" hidden></p>
-          <button class="btn" type="submit">Save profile</button>
+          </section>
+          <div class="pf-save">
+            <p id="profile-msg" class="form-msg" role="status" hidden></p>
+            <button class="btn" type="submit">Save profile</button>
+          </div>
         </form>
       </section>
     </div>

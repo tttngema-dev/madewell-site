@@ -27,6 +27,7 @@
     const user = await MWAuth.requireUser('login.html');
     if (!user) return;
     await MWAuth.hydrateNav();
+    const nm = (user.email || '').split('@')[0]; const hello = $('#hello-name'); if (hello && nm) hello.textContent = '';
     $('#btn-signout').addEventListener('click', async () => {
       await MWAuth.signOut();
       location.href = 'index.html';
@@ -98,6 +99,54 @@
     });
   }
 
+  const STATUSES = ['watching', 'applying', 'submitted', 'won', 'lost'];
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  let activeFilter = 'all';
+
+  function dueInfo(iso) {
+    const d = daysUntil(iso);
+    if (d == null) return { cls: '', html: '<b>No closing date</b>' };
+    if (new Date(iso) < new Date()) {
+      const ago = Math.max(1, Math.round((Date.now() - new Date(iso)) / 86400000));
+      return { cls: 'closed', html: '<b>Closed</b> ' + (ago === 1 ? 'yesterday' : ago + ' days ago') + ' · ' + esc(formatDate(iso)) };
+    }
+    const label = d <= 0 ? 'Closes today' : d === 1 ? 'Closes tomorrow' : 'Closes in ' + d + ' days';
+    return { cls: d <= 3 ? 'urgent' : d <= 7 ? 'warn' : '', html: '<b>' + label + '</b> · ' + esc(formatDate(iso)) };
+  }
+
+  function setStat(name, v) { const el = document.querySelector('[data-stat="' + name + '"]'); if (el) el.textContent = v; }
+
+  function renderStats(items) {
+    const open = (i) => ['watching', 'applying'].includes(i.status || 'watching');
+    setStat('saved', items.length);
+    setStat('soon', items.filter((i) => { const d = daysUntil(i.closing_date); return open(i) && d != null && d >= 0 && d <= 7; }).length);
+    setStat('progress', items.filter((i) => ['applying', 'submitted'].includes(i.status)).length);
+    setStat('won', items.filter((i) => i.status === 'won').length);
+    const c = $('#count-saved'); if (c) c.textContent = items.length || '';
+  }
+
+  function renderFilters(items) {
+    const box = $('#saved-filters');
+    if (!box) return;
+    const count = (f) => f === 'all' ? items.length : f === 'active' ? items.filter((i) => ['watching', 'applying'].includes(i.status || 'watching')).length : items.filter((i) => i.status === f).length;
+    const defs = [['all', 'All'], ['active', 'Active'], ['submitted', 'Submitted'], ['won', 'Won'], ['lost', 'Lost']];
+    box.innerHTML = defs.map(([k, l]) => `<button type="button" class="chip" data-filter="${k}" aria-pressed="${activeFilter === k}">${l}<i>${count(k)}</i></button>`).join('');
+    box.querySelectorAll('[data-filter]').forEach((b) => b.addEventListener('click', () => { activeFilter = b.dataset.filter; applyFilter(); renderFilters(items); }));
+  }
+
+  function applyFilter() {
+    document.querySelectorAll('#saved-list .tcard').forEach((el) => {
+      const st = el.dataset.status;
+      el.hidden = !(activeFilter === 'all' || (activeFilter === 'active' ? ['watching', 'applying'].includes(st) : st === activeFilter));
+    });
+    const any = [...document.querySelectorAll('#saved-list .tcard')].some((e) => !e.hidden);
+    let note = document.getElementById('filter-empty');
+    if (!any && savedItems.length) {
+      if (!note) { note = document.createElement('p'); note.id = 'filter-empty'; note.className = 'muted'; note.style.padding = '1rem 0'; $('#saved-list').appendChild(note); }
+      note.textContent = 'Nothing here yet.';
+    } else if (note) note.remove();
+  }
+
   async function loadSaved() {
     const listEl = $('#saved-list');
     const deadEl = $('#deadlines');
@@ -106,49 +155,60 @@
       const items = data.items || [];
       savedItems = items;
       await loadEdits();
+      renderStats(items);
       if (!items.length) {
-        listEl.innerHTML = '<p class="muted">No saved tenders yet. <a href="tenders.html">Browse open tenders</a> and tap Save.</p>';
+        $('#saved-filters').innerHTML = '';
+        listEl.innerHTML = '<div class="empty"><h3>No saved tenders yet</h3><p>Find a tender you like and tap <b>Save to dashboard</b>. It will show up here with its documents and deadline.</p><a class="btn" href="tenders.html">Browse open tenders</a></div>';
         deadEl.innerHTML = '<p class="muted">No upcoming deadlines.</p>';
         return;
       }
+      renderFilters(items);
       listEl.innerHTML = '';
       items.forEach((item) => {
-        const d = daysUntil(item.closing_date);
-        const div = document.createElement('div');
-        div.className = 'saved-item';
-        div.innerHTML = `
-          <div><span class="badge-sm">${esc(item.status || 'watching')}</span></div>
-          <h3>${esc(item.title || item.ocid)}</h3>
-          <p class="meta">${esc(item.buyer || '')} · Closes ${esc(formatDate(item.closing_date))}${d != null && d >= 0 ? ` (${d}d)` : ''}</p>
-          <div class="actions">
-            <select data-id="${item.id}" class="status-sel" aria-label="Status">
-              ${['watching', 'applying', 'submitted', 'won', 'lost']
-                .map((s) => `<option value="${s}" ${item.status === s ? 'selected' : ''}>${s}</option>`)
-                .join('')}
-            </select>
-            <button type="button" class="btn small" data-docs="${item.id}">Documents${Array.isArray(item.documents) && item.documents.length ? ' (' + item.documents.length + ')' : ''}</button>
-            <button type="button" class="linkish" data-remove="${item.id}">Remove</button>
-          </div>
-          <div class="saved-docs" data-docs-for="${esc(item.ocid)}" hidden></div>`;
-        listEl.appendChild(div);
+        const st = STATUSES.includes(item.status) ? item.status : 'watching';
+        const due = dueInfo(item.closing_date);
+        const nDocs = Array.isArray(item.documents) ? item.documents.length : 0;
+        const el = document.createElement('article');
+        el.className = 'tcard';
+        el.dataset.status = st;
+        el.innerHTML = `
+          <div class="tcard-top"><span class="tcard-buyer">${esc(item.buyer || 'Buyer not listed')}</span><span class="pill pill-${st}" data-pill>${cap(st)}</span></div>
+          <div class="tcard-body">
+            <h3 class="tcard-title">${esc(item.title || item.ocid)}</h3>
+            <div class="tcard-meta">
+              ${item.province ? `<span class="meta-chip prov">${esc(item.province)}</span>` : ''}
+              ${item.ref_no ? `<span class="meta-chip">Ref ${esc(item.ref_no)}</span>` : ''}
+              <span class="due ${due.cls}">${due.html}</span>
+            </div>
+            <div class="tcard-actions">
+              <label class="status-field">Status
+                <select data-id="${item.id}" class="status-sel" aria-label="Status">${STATUSES.map((s) => `<option value="${s}" ${st === s ? 'selected' : ''}>${s}</option>`).join('')}</select>
+              </label>
+              <span class="spacer"></span>
+              <button type="button" class="btn small" data-docs="${item.id}">Documents${nDocs ? ' (' + nDocs + ')' : ''}</button>
+              <button type="button" class="linkish" data-remove="${item.id}">Remove</button>
+            </div>
+            <div class="saved-docs" data-docs-for="${esc(item.ocid)}" hidden></div>
+          </div>`;
+        listEl.appendChild(el);
       });
+      applyFilter();
 
       listEl.querySelectorAll('.status-sel').forEach((sel) => {
         sel.addEventListener('change', async () => {
           try {
-            await MWAuth.api(`/api/account/saved/${sel.dataset.id}`, {
-              method: 'PATCH',
-              body: JSON.stringify({ status: sel.value }),
-            });
-          } catch (e) {
-            alert(e.message);
-          }
+            await MWAuth.api(`/api/account/saved/${sel.dataset.id}`, { method: 'PATCH', body: JSON.stringify({ status: sel.value }) });
+            const item = items.find((i) => String(i.id) === sel.dataset.id); if (item) item.status = sel.value;
+            const card = sel.closest('.tcard'); card.dataset.status = sel.value;
+            const pill = card.querySelector('[data-pill]'); pill.className = 'pill pill-' + sel.value; pill.textContent = cap(sel.value);
+            renderStats(items); renderFilters(items); applyFilter(); renderDeadlines(items);
+          } catch (e) { alert(e.message); }
         });
       });
       listEl.querySelectorAll('[data-docs]').forEach((btn) => {
         btn.addEventListener('click', () => {
           const item = items.find((i) => String(i.id) === btn.dataset.docs);
-          const box = btn.closest('.saved-item').querySelector('.saved-docs');
+          const box = btn.closest('.tcard').querySelector('.saved-docs');
           box.hidden = !box.hidden;
           if (!box.hidden) renderDocs(item, box);
         });
@@ -159,36 +219,48 @@
           try {
             await MWAuth.api(`/api/account/saved/${btn.dataset.remove}`, { method: 'DELETE' });
             await loadSaved();
-          } catch (e) {
-            alert(e.message);
-          }
+          } catch (e) { alert(e.message); }
         });
       });
-
-      const upcoming = items
-        .filter((i) => {
-          const d = daysUntil(i.closing_date);
-          return d != null && d >= 0 && d <= 14 && !['won', 'lost'].includes(i.status);
-        })
-        .slice(0, 8);
-      if (!upcoming.length) {
-        deadEl.innerHTML = '<p class="muted">Nothing closing in the next 14 days.</p>';
-      } else {
-        deadEl.innerHTML = '';
-        upcoming.forEach((item) => {
-          const d = daysUntil(item.closing_date);
-          const div = document.createElement('div');
-          div.className = 'deadline-item';
-          div.innerHTML = `
-            <h3>${esc(item.title || item.ocid)}</h3>
-            <p class="meta ${d <= 3 ? 'urgent-text' : ''}">${d === 0 ? 'Closes today' : d === 1 ? 'Closes tomorrow' : `In ${d} days`} · ${esc(formatDate(item.closing_date))}</p>`;
-          deadEl.appendChild(div);
-        });
-      }
+      renderDeadlines(items);
     } catch (err) {
-      listEl.innerHTML = `<p class="muted">${esc(err.message)}. If tables are missing, run backend/sql/tenders_platform.sql in Supabase.</p>`;
+      listEl.innerHTML = `<p class="muted">${esc(err.message)}. If tables are missing, run the SQL files in backend/sql in Supabase.</p>`;
       deadEl.innerHTML = '';
     }
+  }
+
+  function renderDeadlines(items) {
+    const deadEl = $('#deadlines');
+    const upcoming = items
+      .filter((i) => { const d = daysUntil(i.closing_date); return d != null && d >= 0 && d <= 14 && !['won', 'lost', 'submitted'].includes(i.status); })
+      .sort((a, b) => new Date(a.closing_date) - new Date(b.closing_date))
+      .slice(0, 8);
+    if (!upcoming.length) { deadEl.innerHTML = '<p class="muted">Nothing closing in the next 14 days.</p>'; return; }
+    deadEl.innerHTML = upcoming.map((item) => {
+      const d = daysUntil(item.closing_date);
+      return `<div class="dl-item ${d <= 3 ? 'urgent' : d <= 7 ? 'warn' : ''}">
+        <div class="dl-days"><b>${d <= 0 ? 'Today' : d}</b><small>${d <= 0 ? '' : d === 1 ? 'day' : 'days'}</small></div>
+        <div class="dl-txt"><strong>${esc(item.title || item.ocid)}</strong><span>${esc(formatDate(item.closing_date))}</span></div></div>`;
+    }).join('');
+  }
+
+  // ---- tabs ----
+  function showTab(name) {
+    document.querySelectorAll('.dash-tabs [data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+    document.querySelectorAll('.tab-pane').forEach((p) => { p.hidden = p.id !== 'tab-' + name; });
+    try { history.replaceState(null, '', name === 'profile' ? '#profile' : location.pathname + location.search); } catch (_) {}
+  }
+  document.querySelectorAll('.dash-tabs [data-tab]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+  if (location.hash === '#profile') showTab('profile');
+
+  function updateCompleteness() {
+    const f = $('#profile-form');
+    const keys = ['registered_name', 'cipc_number', 'contact_email', 'contact_phone', 'address_line1', 'city', 'province', 'postal_code', 'tax_number', 'vat_number', 'bbbee_level'];
+    const done = keys.filter((k) => f[k] && String(f[k].value).trim()).length;
+    const pct = Math.round((done / keys.length) * 100);
+    const fill = $('#complete-fill'); fill.style.width = pct + '%'; fill.classList.toggle('done', pct === 100);
+    $('#complete-text').textContent = pct + '% complete';
+    const m = $('#profile-meter'); m.textContent = pct === 100 ? '✓' : pct + '%'; m.classList.toggle('done', pct === 100);
   }
 
   async function loadProfile() {
@@ -219,6 +291,8 @@
     } catch (err) {
       console.warn(err);
     }
+    updateCompleteness();
+    form.addEventListener('input', updateCompleteness);
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -256,7 +330,7 @@
         await MWAuth.api('/api/account/profile', { method: 'PUT', body: JSON.stringify(body) });
         msg.hidden = false;
         msg.className = 'form-msg ok';
-        msg.textContent = 'Profile saved.';
+        msg.textContent = 'Profile saved ✓';
       } catch (err) {
         msg.hidden = false;
         msg.className = 'form-msg err';
