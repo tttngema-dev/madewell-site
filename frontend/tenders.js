@@ -6,7 +6,8 @@
     String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   const state = {
-    page: 1, pageSize: 20, total: 0, q: '', status: 'all', category: '', sort: 'closing', items: [],
+    page: 1, pageSize: 20, total: 0, q: '', status: 'all', category: '', province: '', sort: 'recommended', items: [],
+    tab: 'details',
   };
 
   function daysUntil(iso) {
@@ -20,6 +21,18 @@
         day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
       });
     } catch { return iso; }
+  }
+  function formatDay(iso) {
+    if (!iso) return '—';
+    try { return new Date(iso).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }); }
+    catch { return iso; }
+  }
+  function briefingText(b) {
+    if (!b || b.required == null) return { label: 'Not stated', cls: 'unknown' };
+    if (b.required === false) return { label: 'No', cls: 'no' };
+    if (b.compulsory === true) return { label: 'Yes — compulsory', cls: 'yes' };
+    if (b.compulsory === false) return { label: 'Yes — not compulsory', cls: 'yes' };
+    return { label: 'Yes', cls: 'yes' };
   }
   function formatValue(n, currency) {
     if (n == null || n === 0) return null;
@@ -53,6 +66,7 @@
     });
     if (state.q) params.set('q', state.q);
     if (state.category) params.set('category', state.category);
+    if (state.province) params.set('province', state.province);
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 35000);
@@ -68,13 +82,10 @@
       state.items = data.items || [];
       renderList();
       let metaText = data.total === 0
-        ? 'No tenders matched your filters in the current window.'
-        : 'Showing ' + state.items.length + ' of ' + data.total + ' tenders · published ' + data.dateFrom + ' – ' + data.dateTo;
-      if (data.partial && data.total > 0) {
-        metaText += ' · cache still growing — refresh shortly for more';
-      } else if (data.storeSize) {
-        metaText += ' · ' + data.storeSize + ' in cache';
-      }
+        ? 'No tenders matched your filters.'
+        : 'Showing ' + state.items.length + ' of ' + data.total + ' tenders · ' + data.openCount + ' open';
+      if (data.newestPublished) metaText += ' · latest published ' + formatDay(data.newestPublished);
+      if (data.partial && data.total > 0) metaText += ' · cache still growing — refresh shortly for more';
       meta.textContent = metaText;
       renderPager();
     } catch (err) {
@@ -109,13 +120,16 @@
       btn.className = 'tender-card';
       const statusBadge = t.status === 'closed' ? '<span class="badge closed">Closed</span>' : '<span class="badge open">Open</span>';
       const newBadge = t.isNew ? '<span class="badge new">New</span>' : '';
+      const provBadge = t.province ? '<span class="badge prov">' + esc(t.province) + '</span>' : '';
+      const brief = t.briefing && t.briefing.required === true
+        ? '<span class="badge brief">' + (t.briefing.compulsory ? 'Compulsory briefing' : 'Briefing') + '</span>' : '';
       const catBadge = t.category ? '<span class="badge cat">' + esc(t.category) + '</span>' : '';
       const val = formatValue(t.valueZar, t.currency);
       const closeCls = closingClass(t.closingDate);
       const desc = truncate(t.description, 180);
-      const province = t.province ? esc(t.province) : '';
+      const province = '';
       btn.innerHTML =
-        '<div class="row-top"><span class="ref">' + esc(t.id || t.ocid) + '</span><span class="badges">' + newBadge + statusBadge + catBadge + '</span></div>' +
+        '<div class="row-top"><span class="ref">' + esc(t.id || t.ocid) + '</span><span class="badges">' + newBadge + statusBadge + provBadge + brief + catBadge + '</span></div>' +
         '<h3>' + esc(t.title) + '</h3>' +
         (desc ? '<p class="card-desc">' + esc(desc) + '</p>' : '') +
         '<p class="buyer">' + esc(t.buyer || 'Buyer not listed') + (province ? ' · <span class="province">' + province + '</span>' : '') + '</p>' +
@@ -139,36 +153,101 @@
     $('#next').disabled = state.page >= totalPages;
   }
 
+  function field(label, valueHtml) {
+    return '<div><span class="lab">' + label + '</span><span>' + valueHtml + '</span></div>';
+  }
+
+  function renderDetailsTab(t) {
+    const val = formatValue(t.valueZar, t.currency);
+    const b = briefingText(t.briefing);
+    const bd = t.briefing || {};
+    const open = t.status !== 'closed';
+    let briefExtra = '';
+    if (bd.date) briefExtra += '<div class="brief-extra"><span class="lab">Briefing date</span><span>' + esc(formatDate(bd.date)) + '</span></div>';
+    if (bd.venue) briefExtra += '<div class="brief-extra"><span class="lab">Venue</span><span>' + esc(bd.venue) + '</span></div>';
+    if (bd.notes) briefExtra += '<div class="brief-extra"><span class="lab">Notes</span><span>' + esc(bd.notes) + '</span></div>';
+    const c = t.contact;
+    const contact = c
+      ? '<h3 class="d-h">Contact</h3><div class="d-grid">' +
+        (c.name ? field('Name', esc(c.name)) : '') +
+        (c.email ? field('Email', '<a href="mailto:' + esc(c.email) + '">' + esc(c.email) + '</a>') : '') +
+        (c.phone ? field('Phone', esc(c.phone)) : '') + '</div>'
+      : '';
+    return (
+      '<div class="d-grid">' +
+      field('Status', '<span class="badge ' + (open ? 'open' : 'closed') + '">' + (open ? 'Open' : 'Closed') + '</span>') +
+      field('Province', t.province ? '<span class="badge prov">' + esc(t.province) + '</span>' : '—') +
+      field('Briefing session', '<span class="brief-val ' + b.cls + '">' + esc(b.label) + '</span>') +
+      briefExtra +
+      field('Closes', esc(formatDate(t.closingDate)) + ' · ' + esc(closingLabel(t.closingDate))) +
+      field('Published', esc(formatDate(t.published))) +
+      field('Category', esc(t.category || '—')) +
+      field('Method', esc(t.method || '—')) +
+      (val ? field('Est. value', esc(val)) : '') +
+      '</div>' +
+      '<h3 class="d-h">Description</h3>' +
+      '<div class="desc">' + esc(t.description || 'No description provided.') + '</div>' +
+      contact
+    );
+  }
+
+  function renderDocsTab(t) {
+    const docs = t.documents || [];
+    if (!docs.length) {
+      return '<p class="fine">No documents are attached to this tender in the data feed. Check the official portal — the bid pack may be published there.</p>';
+    }
+    return '<ul class="docs">' + docs.map((d) =>
+      '<li><a href="' + esc(d.url) + '" target="_blank" rel="noopener"><strong>' + esc(d.title) + '</strong>' +
+      '<span class="doc-meta">' + [d.format, d.datePublished ? formatDay(d.datePublished) : ''].filter(Boolean).map(esc).join(' · ') + '</span></a></li>'
+    ).join('') + '</ul>';
+  }
+
+  function renderSourceTab(t) {
+    return (
+      '<div class="d-grid">' +
+      field('Source', 'National Treasury eTenders (OCDS open data)') +
+      field('Tender number', esc(t.id || '—')) +
+      field('OCID', '<code>' + esc(t.ocid) + '</code>') +
+      field('Issued by', esc(t.buyer || '—')) +
+      field('Last updated', esc(formatDate(t.published))) +
+      field('Licence', 'Open Data Commons PDDL') +
+      '</div>' +
+      '<div class="actions">' +
+      '<a class="btn" href="' + esc(t.sourceUrl || 'https://www.etenders.gov.za/') + '" target="_blank" rel="noopener">Open on eTenders portal</a>' +
+      '<a class="btn ghost" href="https://data.etenders.gov.za/" target="_blank" rel="noopener">About the data</a>' +
+      '</div>' +
+      '<p class="fine" style="margin-top:1.25rem">Always download the official pack and confirm the closing time on the National Treasury portal before you prepare a bid.</p>'
+    );
+  }
+
+  function renderTab(t, tab) {
+    state.tab = tab;
+    document.querySelectorAll('#detail .tab').forEach((el) => {
+      const on = el.dataset.tab === tab;
+      el.classList.toggle('on', on);
+      el.setAttribute('aria-selected', on ? 'true' : 'false');
+      el.tabIndex = on ? 0 : -1;
+    });
+    const panel = $('#tab-panel');
+    panel.innerHTML = tab === 'documents' ? renderDocsTab(t) : tab === 'source' ? renderSourceTab(t) : renderDetailsTab(t);
+  }
+
   async function openDetail(t) {
     const body = $('#detail-body');
-    const val = formatValue(t.valueZar, t.currency);
-    const docs = !(t.documents || []).length
-      ? '<p class="fine">No documents listed in this release.</p>'
-      : '<ul class="docs">' + (t.documents || []).map((d) =>
-          '<li><a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.title) + (d.format ? ' · ' + esc(d.format) : '') + '</a></li>'
-        ).join('') + '</ul>';
-
+    const nDocs = (t.documents || []).length;
     body.innerHTML =
       '<p class="eyebrow" style="color:var(--gold);font-size:.8rem;margin:0 0 .4rem">' + esc(t.id || '') + '</p>' +
       '<h2 id="detail-title">' + esc(t.title) + '</h2>' +
       '<p class="d-buyer">' + esc(t.buyer || '') + '</p>' +
-      '<div class="d-grid">' +
-      '<div><span class="lab">Status</span><span>' + esc(t.status === 'closed' ? 'Closed' : 'Open') + '</span></div>' +
-      '<div><span class="lab">Category</span><span>' + esc(t.category || '—') + '</span></div>' +
-      '<div><span class="lab">Province</span><span>' + esc(t.province || '—') + '</span></div>' +
-      '<div><span class="lab">Method</span><span>' + esc(t.method || '—') + '</span></div>' +
-      '<div><span class="lab">Published</span><span>' + esc(formatDate(t.published)) + '</span></div>' +
-      '<div><span class="lab">Closes</span><span>' + esc(formatDate(t.closingDate)) + ' · ' + esc(closingLabel(t.closingDate)) + '</span></div>' +
-      (val ? '<div><span class="lab">Value</span><span>' + esc(val) + '</span></div>' : '') +
+      '<div class="tabs" role="tablist" aria-label="Tender sections">' +
+      '<button type="button" class="tab on" role="tab" data-tab="details" aria-selected="true">Details</button>' +
+      '<button type="button" class="tab" role="tab" data-tab="documents" aria-selected="false" tabindex="-1">Documents' + (nDocs ? ' <span class="count">' + nDocs + '</span>' : '') + '</button>' +
+      '<button type="button" class="tab" role="tab" data-tab="source" aria-selected="false" tabindex="-1">Source</button>' +
       '</div>' +
-      '<h3 style="font-size:1.05rem;margin-top:1.25rem">Description</h3>' +
-      '<div class="desc">' + esc(t.description || 'No description provided.') + '</div>' +
-      '<h3 style="font-size:1.05rem">Documents</h3>' + docs +
-      '<div class="actions">' +
-      '<a class="btn" href="https://www.etenders.gov.za/" target="_blank" rel="noopener">Open eTenders portal</a>' +
-      '<button type="button" class="btn ghost" id="btn-save">Save to dashboard</button>' +
-      '</div>' +
-      '<p class="fine" style="margin-top:1.25rem">Always download the official pack and confirm closing time on the National Treasury portal before you prepare a bid.</p>';
+      '<div id="tab-panel" class="tab-panel" role="tabpanel"></div>' +
+      '<div class="actions save-row"><button type="button" class="btn ghost" id="btn-save">Save to dashboard</button></div>';
+    body.querySelectorAll('.tab').forEach((el) => el.addEventListener('click', () => renderTab(t, el.dataset.tab)));
+    renderTab(t, 'details'); // Details is always the default tab
 
     $('#detail').hidden = false;
     $('#detail-backdrop').hidden = false;
@@ -231,7 +310,7 @@
       load();
     }, 350);
   });
-  ['status', 'category', 'sort'].forEach((id) => {
+  ['status', 'category', 'province', 'sort'].forEach((id) => {
     $('#' + id).addEventListener('change', () => {
       state[id] = $('#' + id).value;
       state.page = 1;
@@ -253,6 +332,7 @@
 
   state.status = $('#status').value;
   state.category = $('#category').value;
+  state.province = $('#province').value;
   state.sort = $('#sort').value;
   if (window.MWAuth) MWAuth.hydrateNav();
   load();

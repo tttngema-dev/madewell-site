@@ -14,87 +14,260 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 const router = Router();
-const OCDS_BASE = 'https://ocds-api.etenders.gov.za/api/OCDSReleases';
+const OCDS_BASE = process.env.OCDS_BASE || 'https://ocds-api.etenders.gov.za/api/OCDSReleases';
 
 const UPSTREAM_PAGE_SIZE = 10;
-const MAX_ITEMS = 500;
+const MAX_ITEMS = 1500;
 const REQUEST_TIMEOUT_MS = 12000;
+const CONCURRENCY = 3; // parallel upstream calls (the API is flaky, keep it gentle)
 const CACHE_TTL_MS = 30 * 60 * 1000; // serve cache for 30 minutes
 const STALE_OK_MS = 6 * 60 * 60 * 1000; // after that still serve stale while refreshing
 const FAST_BUDGET_MS = 9000; // cold fill must finish under this
-const EXPAND_BUDGET_MS = 45000;
+const EXPAND_BUDGET_MS = 60000;
+const REFRESH_BUDGET_MS = 25000;
 
 const SA_PROVINCES = [
-  'Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu-Natal', 'KwaZulu Natal',
+  'Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu-Natal',
   'Limpopo', 'Mpumalanga', 'Northern Cape', 'North West', 'Western Cape',
 ];
 
-/** Windows ordered by observed reliability + likelihood of data. */
-const PRIMARY_WINDOWS = [
-  { from: '2024-09-01', to: '2024-12-31' },
-  { from: '2024-06-01', to: '2024-12-31' },
-  { from: '2024-01-01', to: '2024-12-31' },
-  { from: '2023-07-01', to: '2023-12-31' },
-];
+// ---------------------------------------------------------------------------
+// Date windows – ALWAYS built from today, newest first.
+//
+// The upstream API only returns ~10 releases per call, so the only way to get
+// a deep list of *recent* tenders is to ask for many small, recent windows.
+// (Previously these were hard-coded to 2023/2024, which is why only old, closed
+// tenders ever showed up.)
+// ---------------------------------------------------------------------------
+const DAY = 86400000;
+const ymd = (d) => d.toISOString().slice(0, 10);
+const addDays = (d, n) => new Date(d.getTime() + n * DAY);
 
-function monthlyWindows() {
+function buildWindows(now = new Date()) {
   const out = [];
-  for (const y of [2025, 2024, 2023, 2026]) {
-    for (let m = 1; m <= 12; m++) {
-      if (y === 2026 && m > 11) break;
-      const from = `${y}-${String(m).padStart(2, '0')}-01`;
-      const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
-      const to = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-      out.push({ from, to });
-    }
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  // Tier 1: last 14 days – 2-day windows stepping by 1 day (overlap is harmless, we de-dupe),
+  // multi-page. This is where nearly all still-open tenders live.
+  for (let i = 0; i < 14; i++) {
+    const from = addDays(today, -i - 1);
+    out.push({ from: ymd(from), to: ymd(addDays(from, 1)), pages: 3, tier: 'day' });
+  }
+  // Tier 2: days 14–60 in 3-day windows.
+  for (let i = 14; i < 60; i += 3) {
+    out.push({ from: ymd(addDays(today, -i - 3)), to: ymd(addDays(today, -i)), pages: 2, tier: '3day' });
+  }
+  // Tier 3: 60–180 days in weekly windows.
+  for (let i = 60; i < 180; i += 7) {
+    out.push({ from: ymd(addDays(today, -i - 7)), to: ymd(addDays(today, -i)), pages: 1, tier: 'week' });
   }
   return out;
 }
 
-const EXPAND_WINDOWS = monthlyWindows();
-
 // ---- in-memory store (EasyTenders-style local mirror) ----
 const store = {
   byOcid: new Map(),
-  updatedAt: 0,
+  updatedAt: 0, // last time anything was added/changed
+  checkedAt: 0, // last time a refresh pass finished
   refreshing: false,
+  filling: null,
   lastError: null,
   windowsOk: 0,
   windowsTried: 0,
 };
 
 function cacheAge() {
-  return store.updatedAt ? Date.now() - store.updatedAt : Infinity;
+  const t = Math.max(store.updatedAt, store.checkedAt);
+  return t ? Date.now() - t : Infinity;
 }
 
-function storeItems() {
-  return Array.from(store.byOcid.values());
+// ---------------------------------------------------------------------------
+// Province
+// ---------------------------------------------------------------------------
+const PROVINCE_PATTERNS = [
+  ['Eastern Cape', /\beastern\s+cape\b/i],
+  ['Western Cape', /\bwestern\s+cape\b/i],
+  ['Northern Cape', /\bnorthern\s+cape\b/i],
+  ['North West', /\bnorth[\s-]+west\b/i],
+  ['Free State', /\bfree\s+state\b/i],
+  ['Gauteng', /\bgauteng\b/i],
+  ['KwaZulu-Natal', /\bkwa[\s-]?zulu[\s-]*natal\b|\bkzn\b/i],
+  ['Limpopo', /\blimpopo\b/i],
+  ['Mpumalanga', /\bmpumalanga\b/i],
+];
+const PROVINCE_CODES = {
+  gp: 'Gauteng', wc: 'Western Cape', ec: 'Eastern Cape', kzn: 'KwaZulu-Natal', nl: 'KwaZulu-Natal',
+  fs: 'Free State', lp: 'Limpopo', mp: 'Mpumalanga', nc: 'Northern Cape', nw: 'North West',
+};
+const CITY_HINTS = [
+  ['Gauteng', /\b(jhb|johannesburg|tshwane|pretoria|ekurhuleni|sedibeng|soweto|midrand|centurion|sandton|benoni|germiston|vereeniging|krugersdorp)\b/i],
+  ['Western Cape', /\b(cape town|stellenbosch|paarl|george|worcester|mossel bay|knysna|overberg|cape winelands)\b/i],
+  ['KwaZulu-Natal', /\b(ethekwini|durban|pietermaritzburg|msunduzi|richards bay|newcastle|ladysmith|umhlanga|uthukela|umgungundlovu)\b/i],
+  ['Eastern Cape', /\b(buffalo city|nelson mandela bay|gqeberha|port elizabeth|east london|mthatha|makhanda|queenstown|komani)\b/i],
+  ['Free State', /\b(mangaung|bloemfontein|welkom|bethlehem|sasolburg)\b/i],
+  ['Limpopo', /\b(polokwane|thohoyandou|giyani|tzaneen|mokopane|musina|vhembe|capricorn district)\b/i],
+  ['Mpumalanga', /\b(mbombela|nelspruit|emalahleni|witbank|secunda|ehlanzeni|nkangala|gert sibande)\b/i],
+  ['Northern Cape', /\b(kimberley|upington|sol plaatje|kuruman|springbok)\b/i],
+  ['North West', /\b(mahikeng|mafikeng|rustenburg|klerksdorp|potchefstroom|brits|bojanala)\b/i],
+];
+
+/** Turn any region-ish string into one of the 9 canonical provinces (or ''). */
+function normProvince(s) {
+  if (!s || typeof s !== 'string') return '';
+  const str = s.trim();
+  if (PROVINCE_CODES[str.toLowerCase()]) return PROVINCE_CODES[str.toLowerCase()];
+  for (const [name, re] of PROVINCE_PATTERNS) if (re.test(str)) return name;
+  return '';
 }
 
 function guessProvince(text) {
   if (!text) return '';
-  const lower = text.toLowerCase();
-  for (const p of SA_PROVINCES) {
-    if (lower.includes(p.toLowerCase())) {
-      return p === 'KwaZulu Natal' ? 'KwaZulu-Natal' : p;
-    }
-  }
-  if (/\b(jhb|johannesburg|tshwane|pretoria|ekurhuleni|sedibeng)\b/i.test(text)) return 'Gauteng';
-  if (/\b(cape town|stellenbosch|paarl|george)\b/i.test(text)) return 'Western Cape';
-  if (/\b(ethekwini|durban|pietermaritzburg|msunduzi)\b/i.test(text)) return 'KwaZulu-Natal';
-  if (/\b(buffalo city|nelson mandela|gqeberha)\b/i.test(text)) return 'Eastern Cape';
-  if (/\b(mangaung|bloemfontein)\b/i.test(text)) return 'Free State';
+  const explicit = normProvince(text);
+  if (explicit) return explicit;
+  for (const [name, re] of CITY_HINTS) if (re.test(text)) return name;
   return '';
 }
 
+function addressProvince(addr) {
+  if (!addr || typeof addr !== 'object') return '';
+  return (
+    normProvince(addr.region) ||
+    normProvince(addr.locality) ||
+    normProvince(addr.streetAddress) ||
+    normProvince(addr.province) ||
+    guessProvince([addr.locality, addr.streetAddress, addr.region].filter(Boolean).join(' '))
+  );
+}
+
 function extractProvince(r, t, buyer) {
-  for (const p of r.parties || []) {
-    const addr = p.address || {};
-    if (addr.region) return addr.region;
+  // 1. Where the work/delivery happens (most relevant to bidders)
+  for (const it of t.items || []) {
+    const p = addressProvince(it.deliveryAddress) ||
+      (it.deliveryLocation && normProvince(it.deliveryLocation.description || it.deliveryLocation.name));
+    if (p) return p;
   }
+  // 2. Procuring entity / buyer address
   const pe = t.procuringEntity || {};
-  if (pe.address && pe.address.region) return pe.address.region;
+  const fromPe = addressProvince(pe.address);
+  if (fromPe) return fromPe;
+  for (const p of r.parties || []) {
+    const roles = p.roles || [];
+    if (roles.includes('buyer') || roles.includes('procuringEntity')) {
+      const hit = addressProvince(p.address);
+      if (hit) return hit;
+    }
+  }
+  for (const p of r.parties || []) {
+    const hit = addressProvince(p.address);
+    if (hit) return hit;
+  }
+  // 3. Text hints
   return guessProvince([buyer, t.title, t.description].filter(Boolean).join(' '));
+}
+
+// ---------------------------------------------------------------------------
+// Briefing session  (Yes / No / not stated)
+// ---------------------------------------------------------------------------
+const BRIEF_KEY = /briefing|site[\s_-]?(visit|inspection|meeting)|clarification[\s_-]?meeting|pre[\s_-]?bid/i;
+
+function firstString(...vals) {
+  for (const v of vals) if (typeof v === 'string' && v.trim()) return v.trim();
+  return '';
+}
+
+function boolish(v) {
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'number') return v !== 0;
+  if (typeof v === 'string') {
+    const s = v.trim().toLowerCase();
+    if (/^(yes|y|true|compulsory|mandatory|required)\b/.test(s)) return true;
+    if (/^(no|n|false|none|not\s+(required|applicable)|n\/a)\b/.test(s)) return false;
+  }
+  return null;
+}
+
+function walkForBriefing(obj, depth = 0, acc = []) {
+  if (!obj || typeof obj !== 'object' || depth > 4) return acc;
+  for (const [k, v] of Object.entries(obj)) {
+    if (BRIEF_KEY.test(k)) acc.push([k, v]);
+    else if (v && typeof v === 'object') walkForBriefing(v, depth + 1, acc);
+  }
+  return acc;
+}
+
+function extractBriefing(r, t, docTitles) {
+  // A. structured data from the release (field names vary, so search defensively)
+  const hits = walkForBriefing(t);
+  for (const [key, v] of hits) {
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const compulsory = [v.compulsory, v.isCompulsory, v.mandatory, v.required].map(boolish).find((x) => x !== null);
+      const date = firstString(v.date, v.dateTime, v.startDate, v.dueDate, v.meetingDate);
+      const addr = v.address && typeof v.address === 'object'
+        ? [v.address.streetAddress, v.address.locality, v.address.region].filter(Boolean).join(', ')
+        : '';
+      const venue = firstString(v.venue, v.location, v.place, addr, v.address);
+      const notes = firstString(v.description, v.notes, v.details);
+      return {
+        required: true,
+        compulsory: compulsory === undefined ? null : compulsory,
+        date: date || null, venue, notes, source: 'tender data',
+      };
+    }
+    const b = boolish(v);
+    if (b === true) {
+      const compulsoryText = typeof v === 'string' && /compulsory|mandatory/i.test(v);
+      const nonComp = typeof v === 'string' && /non[\s-]?compulsory|optional/i.test(v);
+      return {
+        required: true,
+        compulsory: nonComp ? false : (compulsoryText || /compulsory|mandatory/i.test(key) ? true : null),
+        date: null, venue: typeof v === 'string' && v.length > 6 ? v : '', notes: '', source: 'tender data',
+      };
+    }
+    if (b === false) return { required: false, compulsory: false, date: null, venue: '', notes: '', source: 'tender data' };
+    if (typeof v === 'string' && v.trim()) {
+      return { required: true, compulsory: null, date: null, venue: '', notes: v.trim(), source: 'tender data' };
+    }
+  }
+  // B. milestones
+  for (const m of t.milestones || []) {
+    const label = [m.type, m.title, m.code].filter(Boolean).join(' ');
+    if (BRIEF_KEY.test(label)) {
+      return {
+        required: true,
+        compulsory: /compulsory|mandatory/i.test(label + ' ' + (m.description || '')) ? true : null,
+        date: m.dueDate || m.dateMet || null, venue: '', notes: firstString(m.description), source: 'tender data',
+      };
+    }
+  }
+  // C. wording in title / description / document names
+  const text = [t.title, t.description, ...(docTitles || [])].filter(Boolean).join(' \n ');
+  if (/non[\s-]?compulsory\s+(site\s+)?(briefing|meeting|inspection|clarification)|(briefing|site\s+(meeting|inspection|visit))[^.\n]{0,30}non[\s-]?compulsory/i.test(text)) {
+    return { required: true, compulsory: false, date: null, venue: '', notes: '', source: 'tender text' };
+  }
+  if (/(compulsory|mandatory)\s+(site\s+)?(briefing|inspection|meeting|clarification|visit)|(briefing|site\s+(meeting|inspection|visit))[^.\n]{0,30}(compulsory|mandatory)/i.test(text)) {
+    return { required: true, compulsory: true, date: null, venue: '', notes: '', source: 'tender text' };
+  }
+  if (/\bno\s+(compulsory\s+)?(briefing|site\s+(meeting|inspection|visit))/i.test(text)) {
+    return { required: false, compulsory: false, date: null, venue: '', notes: '', source: 'tender text' };
+  }
+  if (/\b(briefing\s+session|briefing|site\s+(inspection|visit|meeting)|clarification\s+meeting|pre[\s-]?bid\s+meeting)\b/i.test(text)) {
+    return { required: true, compulsory: null, date: null, venue: '', notes: '', source: 'tender text' };
+  }
+  return { required: null, compulsory: null, date: null, venue: '', notes: '', source: '' };
+}
+
+function extractContact(r) {
+  for (const p of r.parties || []) {
+    const c = p.contactPoint;
+    if (c && (c.name || c.email || c.telephone)) {
+      return { name: c.name || '', email: c.email || '', phone: c.telephone || '', organisation: p.name || '' };
+    }
+  }
+  const pe = (r.tender || {}).procuringEntity;
+  if (pe && pe.contactPoint) {
+    const c = pe.contactPoint;
+    return { name: c.name || '', email: c.email || '', phone: c.telephone || '', organisation: pe.name || '' };
+  }
+  return null;
 }
 
 function shapeRelease(r) {
@@ -108,21 +281,13 @@ function shapeRelease(r) {
   const docs = (t.documents || []).map((d) => ({
     id: d.id,
     title: d.title || d.description || 'Document',
+    description: d.title && d.description && d.description !== d.title ? d.description : '',
     url: d.url,
     format: d.format || '',
     datePublished: d.datePublished,
   }));
-  const end = period.endDate ? new Date(period.endDate) : null;
-  const now = new Date();
-  let status = (t.status || '').toLowerCase() || 'active';
-  if (end && end < now) status = 'closed';
 
   const published = r.date || period.startDate || null;
-  let isNew = false;
-  if (published) {
-    const pub = new Date(published);
-    if (!Number.isNaN(pub.getTime())) isNew = (now - pub) / 86400000 <= 7;
-  }
 
   return {
     ocid: r.ocid,
@@ -133,17 +298,35 @@ function shapeRelease(r) {
     province: extractProvince(r, t, buyer),
     category: t.mainProcurementCategory || (t.additionalProcurementCategories || [])[0] || '',
     method: t.procurementMethodDetails || t.procurementMethod || '',
-    status,
+    baseStatus: (t.status || '').toLowerCase() || 'active',
     published,
-    isNew,
     openingDate: period.startDate || null,
     closingDate: period.endDate || null,
     valueZar: typeof value.amount === 'number' ? value.amount : null,
     currency: value.currency || 'ZAR',
+    briefing: extractBriefing(r, t, docs.map((d) => d.title)),
+    contact: extractContact(r),
     documents: docs,
     documentCount: docs.length,
+    releaseId: r.id || null,
     sourceUrl: 'https://www.etenders.gov.za/',
   };
+}
+
+const CLOSED_STATUSES = new Set(['cancelled', 'canceled', 'unsuccessful', 'withdrawn', 'complete']);
+
+/** Status / "new" flag are evaluated when served, so cached tenders close on time. */
+function serialize(item, now = Date.now()) {
+  const end = item.closingDate ? new Date(item.closingDate).getTime() : null;
+  let status = 'open';
+  if (CLOSED_STATUSES.has(item.baseStatus)) status = 'closed';
+  else if (end && !Number.isNaN(end) && end < now) status = 'closed';
+  let isNew = false;
+  if (item.published) {
+    const pub = new Date(item.published).getTime();
+    if (!Number.isNaN(pub)) isNew = (now - pub) / DAY <= 7;
+  }
+  return { ...item, status, isNew };
 }
 
 function httpsGetJson(urlStr, timeoutMs = REQUEST_TIMEOUT_MS) {
@@ -202,11 +385,11 @@ async function curlGetJson(urlStr, timeoutMs = REQUEST_TIMEOUT_MS) {
   return JSON.parse(stdout);
 }
 
-async function fetchPage(dateFrom, dateTo) {
+async function fetchPage(dateFrom, dateTo, pageNumber = 1) {
   const params = new URLSearchParams({
     dateFrom,
     dateTo,
-    PageNumber: '1',
+    PageNumber: String(pageNumber),
     PageSize: String(UPSTREAM_PAGE_SIZE),
   });
   const url = `${OCDS_BASE}?${params}`;
@@ -217,68 +400,101 @@ async function fetchPage(dateFrom, dateTo) {
   }
 }
 
+/** Add/refresh releases. A newer release for the same ocid replaces the old one. */
 function mergeIntoStore(releases) {
-  let added = 0;
+  let changed = 0;
   for (const r of releases || []) {
     if (!r || !r.ocid) continue;
-    if (!store.byOcid.has(r.ocid)) {
+    const existing = store.byOcid.get(r.ocid);
+    if (!existing || (r.date && existing.published && r.date > existing.published)) {
       store.byOcid.set(r.ocid, shapeRelease(r));
-      added += 1;
+      changed += 1;
     }
-    if (store.byOcid.size >= MAX_ITEMS) break;
   }
-  if (added) store.updatedAt = Date.now();
-  return added;
+  if (changed) store.updatedAt = Date.now();
+  evictIfNeeded();
+  return changed;
 }
 
-/** Fast fill: a few primary windows only — aimed at < FAST_BUDGET_MS. */
-async function fastFill() {
-  const deadline = Date.now() + FAST_BUDGET_MS;
-  let tried = 0;
-  let ok = 0;
-  for (const w of PRIMARY_WINDOWS) {
-    if (Date.now() > deadline) break;
-    if (store.byOcid.size >= 80) break;
-    tried += 1;
+/** Keep the store bounded: drop the oldest closed tenders first, then the oldest of anything. */
+function evictIfNeeded() {
+  if (store.byOcid.size <= MAX_ITEMS) return;
+  const now = Date.now();
+  const all = Array.from(store.byOcid.values()).map((it) => ({ it, s: serialize(it, now) }));
+  all.sort((a, b) => {
+    if ((a.s.status === 'closed') !== (b.s.status === 'closed')) return a.s.status === 'closed' ? -1 : 1;
+    return (a.it.published || '').localeCompare(b.it.published || '');
+  });
+  for (const { it } of all) {
+    if (store.byOcid.size <= MAX_ITEMS) break;
+    store.byOcid.delete(it.ocid);
+  }
+}
+
+/** Pull one window (page 1, then further pages while the upstream keeps returning full pages). */
+async function pullWindow(w) {
+  store.windowsTried += 1;
+  let got = false;
+  for (let page = 1; page <= (w.pages || 1); page++) {
+    let pkg;
     try {
-      const pkg = await fetchPage(w.from, w.to);
-      const n = mergeIntoStore(pkg.releases || []);
-      if (n || (pkg.releases || []).length) ok += 1;
+      pkg = await fetchPage(w.from, w.to, page);
     } catch (err) {
       store.lastError = err.message;
+      break; // upstream often 500s past page 1 – that's fine, keep what we have
     }
+    const rel = (pkg && pkg.releases) || [];
+    mergeIntoStore(rel);
+    if (rel.length) got = true;
+    if (rel.length < UPSTREAM_PAGE_SIZE) break;
   }
-  store.windowsTried += tried;
-  store.windowsOk += ok;
+  if (got) store.windowsOk += 1;
+}
+
+/** Run windows through a small worker pool, newest first, until the deadline. */
+async function runWindows(windows, budgetMs) {
+  const deadline = Date.now() + budgetMs;
+  let next = 0;
+  const worker = async () => {
+    while (next < windows.length && Date.now() < deadline) {
+      await pullWindow(windows[next++]);
+    }
+  };
+  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+}
+
+/** Fast cold fill: only the most recent days, so something fresh is on screen in seconds. */
+async function fastFill() {
+  const windows = buildWindows().slice(0, 7);
+  await runWindows(windows, FAST_BUDGET_MS);
   return store.byOcid.size;
 }
 
-/** Background expansion across monthly windows — does not block responses. */
-async function expandFill() {
+function coldFill() {
+  if (!store.filling) store.filling = fastFill().finally(() => { store.filling = null; });
+  return store.filling;
+}
+
+/** Background deepening (full history window) or a quick top-up of just the newest days. */
+async function expandFill(mode = 'full') {
   if (store.refreshing) return;
   store.refreshing = true;
-  const deadline = Date.now() + EXPAND_BUDGET_MS;
   try {
-    for (const w of EXPAND_WINDOWS) {
-      if (Date.now() > deadline) break;
-      if (store.byOcid.size >= MAX_ITEMS) break;
-      store.windowsTried += 1;
-      try {
-        const pkg = await fetchPage(w.from, w.to);
-        const added = mergeIntoStore(pkg.releases || []);
-        if (added) store.windowsOk += 1;
-      } catch {
-        /* skip */
-      }
-      await new Promise((r) => setTimeout(r, 120));
-    }
+    const all = buildWindows();
+    if (mode === 'recent') await runWindows(all.slice(0, 14), REFRESH_BUDGET_MS);
+    else await runWindows(all, EXPAND_BUDGET_MS);
   } finally {
     store.refreshing = false;
+    store.checkedAt = Date.now();
   }
 }
 
-function filterSort(list, { q, statusFilter, category, sort }) {
-  let out = list;
+const rank = (s) => (s.status === 'closed' ? 1 : 0);
+const pubKey = (s) => s.published || s.openingDate || '';
+
+function filterSort(list, { q, statusFilter, category, province, sort }) {
+  const now = Date.now();
+  let out = list.map((it) => serialize(it, now));
   if (q) {
     const qq = q.toLowerCase();
     out = out.filter(
@@ -290,17 +506,29 @@ function filterSort(list, { q, statusFilter, category, sort }) {
         (t.id && String(t.id).toLowerCase().includes(qq))
     );
   }
-  if (statusFilter === 'open') out = out.filter((t) => t.status !== 'closed');
+  if (statusFilter === 'open') out = out.filter((t) => t.status === 'open');
   else if (statusFilter === 'closed') out = out.filter((t) => t.status === 'closed');
   if (category) out = out.filter((t) => (t.category || '').toLowerCase().includes(category));
+  if (province) out = out.filter((t) => (t.province || '').toLowerCase() === province);
 
   if (sort === 'newest') {
-    out.sort((a, b) => (b.published || '').localeCompare(a.published || ''));
-  } else {
+    // purely by publish date, newest first
+    out.sort((a, b) => pubKey(b).localeCompare(pubKey(a)));
+  } else if (sort === 'closing') {
+    // open tenders by closing soonest; closed ones last, most recently closed first
     out.sort((a, b) => {
-      if (!a.closingDate) return 1;
-      if (!b.closingDate) return -1;
-      return a.closingDate.localeCompare(b.closingDate);
+      if (rank(a) !== rank(b)) return rank(a) - rank(b);
+      const ac = a.closingDate || '', bc = b.closingDate || '';
+      if (a.status === 'closed') return bc.localeCompare(ac);
+      if (!ac) return 1;
+      if (!bc) return -1;
+      return ac.localeCompare(bc);
+    });
+  } else {
+    // default "recommended": OPEN first (newest published first), then closed (newest first)
+    out.sort((a, b) => {
+      if (rank(a) !== rank(b)) return rank(a) - rank(b);
+      return pubKey(b).localeCompare(pubKey(a));
     });
   }
   return out;
@@ -310,22 +538,17 @@ async function ensureStore() {
   const age = cacheAge();
   // Fresh enough — return immediately
   if (store.byOcid.size > 0 && age < CACHE_TTL_MS) {
-    if (!store.refreshing && age > CACHE_TTL_MS / 2) {
-      // soft background refresh
-      expandFill().catch(() => {});
-    }
+    if (!store.refreshing && age > CACHE_TTL_MS / 2) expandFill('recent').catch(() => {});
     return 'fresh';
   }
-  // Stale but usable — return stale, refresh in background
+  // Stale but usable — return stale, top up the newest days in the background
   if (store.byOcid.size > 0 && age < STALE_OK_MS) {
-    if (!store.refreshing) expandFill().catch(() => {});
+    if (!store.refreshing) expandFill('recent').catch(() => {});
     return 'stale';
   }
-  // Empty or very old — do a fast fill, then expand in background
-  await fastFill();
-  if (store.byOcid.size > 0 && !store.refreshing) {
-    expandFill().catch(() => {});
-  }
+  // Empty or very old — fast fill of the latest days, then deepen in the background
+  await coldFill();
+  if (store.byOcid.size > 0 && !store.refreshing) expandFill('full').catch(() => {});
   return store.byOcid.size ? 'filled' : 'empty';
 }
 
@@ -350,23 +573,29 @@ router.get('/tenders', async (req, res) => {
     const q = (req.query.q || '').trim();
     const statusFilter = (req.query.status || '').toLowerCase();
     const category = (req.query.category || '').toLowerCase();
+    const province = (req.query.province || '').toLowerCase();
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const pageSize = Math.min(50, Math.max(5, parseInt(req.query.pageSize, 10) || 20));
-    const sort = req.query.sort || 'closing';
+    const sort = req.query.sort || 'recommended';
 
-    const list = filterSort(storeItems(), { q, statusFilter, category, sort });
+    const list = filterSort(Array.from(store.byOcid.values()), { q, statusFilter, category, province, sort });
     const total = list.length;
     const start = (page - 1) * pageSize;
     const items = list.slice(start, start + pageSize);
 
+    const newest = Array.from(store.byOcid.values()).reduce((m, t) => (pubKey(t) > m ? pubKey(t) : m), '');
+    const openCount = list.filter((t) => t.status === 'open').length;
+
     res.json({
       ok: true,
       total,
+      openCount,
       page,
       pageSize,
       cache: status,
       cacheAgeSec: Math.round(cacheAge() / 1000),
       storeSize: store.byOcid.size,
+      newestPublished: newest || null,
       windowsTried: store.windowsTried,
       windowsOk: store.windowsOk,
       ms: Date.now() - started,
@@ -375,15 +604,16 @@ router.get('/tenders', async (req, res) => {
         store.byOcid.size < 50
           ? 'Still building the tender cache from National Treasury — refresh in a minute for more results.'
           : undefined,
+      provinces: SA_PROVINCES,
       items,
       source: 'National Treasury eTenders OCDS API',
       license: 'Open Data Commons PDDL',
     });
   } catch (err) {
     console.error('[tenders]', err.message);
-    // Last resort: if we have any cache, serve it
+    // Last resort: if we have any cache, serve it (open + newest first)
     if (store.byOcid.size) {
-      const items = storeItems().slice(0, 20);
+      const items = filterSort(Array.from(store.byOcid.values()), { sort: 'recommended' }).slice(0, 20);
       return res.json({
         ok: true,
         total: store.byOcid.size,
@@ -409,7 +639,7 @@ router.get('/tenders/:ocid', async (req, res) => {
     const ocid = decodeURIComponent(req.params.ocid);
     const found = store.byOcid.get(ocid);
     if (!found) return res.status(404).json({ ok: false, error: 'Tender not found' });
-    res.json({ ok: true, item: found });
+    res.json({ ok: true, item: serialize(found) });
   } catch (err) {
     res.status(502).json({ ok: false, error: 'Could not load tender detail' });
   }

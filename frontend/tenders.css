@@ -83,7 +83,7 @@
 .detail-panel h2 { font-size: 1.45rem; margin: 0 2.5rem 0.75rem 0; clear: both; }
 .detail-panel .d-buyer { color: var(--soft); margin-bottom: 1rem; }
 .detail-panel .d-grid { display: grid; gap: 0.65rem; margin: 1.25rem 0; font-size: 0.95rem; }
-.detail-panel .d-grid div { display: grid; grid-template-columns: 7.5rem 1fr; gap: 0.5rem; }
+.detail-panel .d-grid div { display: grid; grid-template-columns: 8.5rem 1fr; gap: 0.5rem; }
 .detail-panel .d-grid .lab { color: var(--soft); }
 .detail-panel .desc { white-space: pre-wrap; color: var(--paper); line-height: 1.55; margin: 1rem 0 1.5rem; font-size: 0.98rem; }
 .detail-panel .docs { list-style: none; padding: 0; margin: 0.75rem 0 0; display: grid; gap: 0.5rem; }
@@ -128,3 +128,30 @@
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
 .tender-card .province { color: var(--bulb); font-weight: 500; }
+
+.badge.prov { background: rgba(245,166,35,0.18); color: var(--bulb); border: 1px solid rgba(245,166,35,0.4); }
+.badge.brief { background: rgba(160,120,255,0.18); color: #c9b3ff; border: 1px solid rgba(160,120,255,0.4); }
+.tabs { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--line); margin: 1rem 0 1.25rem; }
+.tab {
+  font: inherit; font-weight: 600; font-size: 0.95rem; color: var(--soft); background: none; border: 0;
+  border-bottom: 3px solid transparent; padding: 0.6rem 1rem; cursor: pointer; margin-bottom: -1px;
+}
+.tab:hover { color: var(--paper); }
+.tab.on { color: var(--bulb); border-bottom-color: var(--gold); }
+.tab:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; border-radius: 6px; }
+.tab .count {
+  display: inline-block; min-width: 1.25rem; padding: 0 0.35rem; margin-left: 0.25rem; border-radius: 999px;
+  background: var(--stage-2); border: 1px solid var(--line); font-size: 0.75rem; text-align: center; color: var(--paper);
+}
+.detail-panel .d-h { font-size: 1.05rem; margin: 1.25rem 0 0.25rem; }
+.detail-panel .d-grid { margin-top: 0; }
+.detail-panel .d-grid code { font-size: 0.82rem; word-break: break-all; color: var(--soft); }
+.detail-panel .d-grid a { color: var(--bulb); }
+.brief-val { font-weight: 600; }
+.brief-val.yes { color: #c9b3ff; }
+.brief-val.no { color: #7ddeb8; }
+.brief-val.unknown { color: var(--soft); font-weight: 400; }
+.detail-panel .docs a strong { display: block; font-weight: 600; }
+.detail-panel .docs .doc-meta { display: block; color: var(--soft); font-size: 0.8rem; margin-top: 0.15rem; }
+.detail-panel .save-row { margin-top: 2rem; padding-top: 1.25rem; border-top: 1px solid var(--line); }
+@media (max-width: 640px) { .tab { padding: 0.6rem 0.7rem; font-size: 0.9rem; } .detail-panel .d-grid .brief-extra { grid-template-columns: 1fr; } }
