@@ -155,11 +155,11 @@
           <label>Subject <input name="subject" type="text" maxlength="200" /></label>
           <label>Message <textarea name="message" rows="4" maxlength="5000" placeholder="Add a short note (optional)"></textarea></label>
           <label class="dv-check"><input name="cc_me" type="checkbox" checked /> Send me a copy</label>
-          <p class="dv-email-note">The filled-in PDF is attached. Replies go straight to you.</p>
+          <p class="dv-email-note">On supported devices, share the PDF directly with Gmail or another email app. Otherwise the PDF downloads and your email app opens.</p>
           <p class="dv-email-msg" role="status" hidden></p>
           <div class="dv-email-actions">
             <button type="button" class="dv-btn" data-act="email-cancel">Cancel</button>
-            <button type="button" class="dv-btn" data-act="email-own" title="Downloads the filled PDF and opens your email app so you can attach it">Use my email app</button>
+            <button type="button" class="dv-btn" data-act="email-own" title="Share the PDF with an email app or open your email app">Use my email app</button>
             <button type="submit" class="dv-btn dv-primary">Send email</button>
           </div>
         </form>
@@ -427,12 +427,12 @@
     }
 
     function select(id) {
-      state.selected = id;
-      root.querySelectorAll('.dv-item.sel').forEach((e) => e.classList.remove('sel'));
-      if (id) {
-        const el = root.querySelector('.dv-item[data-id="' + id + '"]');
-        if (el) el.classList.add('sel');
-      }
+      // Keep one active placement highlighted; previously placed items stay unchanged.
+      state.selected = id || null;
+      root.querySelectorAll('.dv-item.sel').forEach((el) => el.classList.remove('sel'));
+      if (!state.selected) return;
+      const active = root.querySelector('.dv-item[data-id="' + CSS.escape(state.selected) + '"]');
+      if (active) active.classList.add('sel');
     }
     function deselect() {
       if (!state.selected) return;
@@ -510,7 +510,7 @@
       const prof = state.profile || {};
       const name = (prof.registered_name || prof.trading_name || '').trim() || 'Company name';
       const reg = (prof.cipc_number || '').trim();
-      const lines = [name];
+      const lines = ['COMPANY STAMP', name];
       if (reg) lines.push('Reg. ' + reg);
       lines.push(todayText());
       return lines.join('\n');
@@ -697,20 +697,32 @@
       await withBusy(btn, 'Preparing…', async () => {
         try {
           const out = await buildFilledPdf();
-          // Browsers cannot attach a generated file to mailto for security reasons.
-          // Download the PDF, then open the user's email app so they can attach it in one step.
-          download(out, slug(o.title) + '-filled.pdf');
           const filename = slug(o.title) + '-filled.pdf';
-          const body = (f.message.value ? f.message.value + '\n\n' : '') +
-            '—\nPlease attach the PDF that was just downloaded: ' + filename;
           const to = f.to.value.trim().replace(/\s+/g, '');
+          const subject = f.subject.value || ('Tender document: ' + (o.tenderTitle || o.title || ''));
+          const message = f.message.value || '';
+          const file = new File([out], filename, { type: 'application/pdf' });
+
+          // Native share can pass the actual PDF attachment to Gmail, Outlook or Mail.
+          if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], title: subject, text: (to ? 'Recipient: ' + to + '\\n\\n' : '') + message });
+            emailMsg('Choose Gmail, Outlook or your preferred email app to send the attached PDF.', 'ok');
+            return;
+          }
+
+          // mailto cannot attach files. Fallback: download the PDF and open the configured email app.
+          download(out, filename);
+          const body = (message ? message + '\n\n' : '') +
+            '—\nPlease attach the PDF that was just downloaded: ' + filename;
           location.href = 'mailto:' + encodeURIComponent(to).replace(/%2C/g, ',').replace(/%40/g, '@') +
-            '?subject=' + encodeURIComponent(f.subject.value) +
-            '&body=' + encodeURIComponent(body);
-        } catch (err) { emailMsg(err.message, 'err'); }
+            '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+          emailMsg('Your email app is opening. Attach the downloaded PDF before sending.', 'ok');
+        } catch (err) {
+          if (err && err.name === 'AbortError') return;
+          emailMsg(err.message || 'Could not open your email app.', 'err');
+        }
       });
     }
-
     // ------------------------------------------------------------ events
     root.addEventListener('click', (e) => {
       const t = e.target.closest('[data-act],[data-tool]');
