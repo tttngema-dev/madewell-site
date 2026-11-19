@@ -11,6 +11,7 @@ import { tendersRouter } from './routes/tenders.js';
 import { accountRouter } from './routes/account.js';
 import { docsRouter } from './routes/docs.js';
 import { companyDocsRouter } from './routes/companyDocs.js';
+import { alertsRouter } from './routes/alerts.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -47,6 +48,7 @@ app.use('/api', tendersRouter);
 app.use('/api', accountRouter);
 app.use('/api', docsRouter);
 app.use('/api', companyDocsRouter);
+app.use('/api', alertsRouter);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

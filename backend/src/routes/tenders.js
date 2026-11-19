@@ -671,4 +671,11 @@ router.get('/tenders/:ocid', async (req, res) => {
   }
 });
 
+/** For the daily tender-alert emails: every cached tender, with open/closed evaluated right now. */
+export async function getTendersForAlerts() {
+  await ensureStore();
+  const now = Date.now();
+  return Array.from(store.byOcid.values()).map((t) => serialize(t, now));
+}
+
 export { router as tendersRouter };
