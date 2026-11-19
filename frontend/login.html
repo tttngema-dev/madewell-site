@@ -73,7 +73,8 @@
   <script>
     (function () {
       const params = new URLSearchParams(location.search);
-      const next = params.get('next') || 'dashboard.html';
+      const next = MWAuth.safeNext(params.get('next'));
+      const toSignup = document.querySelector('.auth-switch a'); if (toSignup) toSignup.href = 'signup.html?next=' + encodeURIComponent(next);
 
       document.querySelectorAll('.tab').forEach((btn) => {
         btn.addEventListener('click', () => {

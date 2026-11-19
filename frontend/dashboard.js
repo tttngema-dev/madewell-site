@@ -32,8 +32,33 @@
       await MWAuth.signOut();
       location.href = 'index.html';
     });
+    currentUser = user;
+    const pending = await applyPending(); // a tender they tried to save / fill in before signing in or registering
     await Promise.all([loadSaved(), loadProfile(), loadCompanyDocs(), loadSignature()]);
+    await loadAlerts();
+    if (pending && pending.type === 'fill') {
+      history.replaceState(null, '', location.pathname + '?open=' + encodeURIComponent(pending.tender.ocid) + '&doc=' + (pending.doc | 0));
+    } else if (pending) {
+      toast('Saved to your dashboard ✓');
+      const card = document.querySelector('[data-docs-for="' + CSS.escape(pending.tender.ocid) + '"]');
+      const c = card && (card.closest('.tcard') || card.parentElement);
+      if (c) { c.classList.add('just-saved'); c.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    }
     autoOpenFromUrl();
+  }
+
+  let currentUser = null;
+  function toast(text, err) {
+    const t = document.createElement('div');
+    t.className = 'toast' + (err ? ' err' : ''); t.textContent = text; t.setAttribute('role', 'status');
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 5200);
+  }
+  async function applyPending() {
+    const p = MWAuth.takePending();
+    if (!p || !p.tender || !p.tender.ocid) return null;
+    try { await MWAuth.api('/api/account/saved', { method: 'POST', body: JSON.stringify(p.tender) }); return p; }
+    catch (err) { toast('Could not save that tender: ' + (err.message || 'try again from the tenders page'), true); return null; }
   }
 
   // tenders.html sends people here with ?open=<ocid>&doc=<index> after "Save & fill in"
@@ -248,10 +273,12 @@
   function showTab(name) {
     document.querySelectorAll('.dash-tabs [data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
     document.querySelectorAll('.tab-pane').forEach((p) => { p.hidden = p.id !== 'tab-' + name; });
-    try { history.replaceState(null, '', name === 'profile' ? '#profile' : location.pathname + location.search); } catch (_) {}
+    try { history.replaceState(null, '', name === 'profile' || name === 'alerts' ? '#' + name : location.pathname + location.search); } catch (_) {}
   }
   document.querySelectorAll('.dash-tabs [data-tab]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
   if (location.hash === '#profile') showTab('profile');
+  if (location.hash === '#alerts') showTab('alerts');
+  window.addEventListener('hashchange', () => { if (location.hash === '#alerts') showTab('alerts'); else if (location.hash === '#profile') showTab('profile'); });
 
   function updateCompleteness() {
     const f = $('#profile-form');
@@ -261,7 +288,32 @@
     const fill = $('#complete-fill'); fill.style.width = pct + '%'; fill.classList.toggle('done', pct === 100);
     $('#complete-text').textContent = pct + '% complete';
     const m = $('#profile-meter'); m.textContent = pct === 100 ? '✓' : pct + '%'; m.classList.toggle('done', pct === 100);
+    updateNudge();
   }
+
+  // Banner at the top of the dashboard until the basics are filled in (it is what fills tender forms for you)
+  function updateNudge() {
+    const f = $('#profile-form'), box = $('#profile-nudge');
+    if (!f || !box) return;
+    const has = (k) => !!(f[k] && String(f[k].value).trim());
+    const steps = [
+      ['company name', has('registered_name')], ['registration number', has('cipc_number')], ['phone number', has('contact_phone')],
+      ['address', has('address_line1') && has('city')], ['company documents', cdocs.length > 0], ['signature', !!mySig],
+      ['tender alerts', !!(alertPrefs && alertPrefs.enabled)],
+    ];
+    const missing = steps.filter((x) => !x[1]).map((x) => x[0]);
+    nudgeTarget = missing.every((m) => m === 'tender alerts') ? 'alerts' : 'profile';
+    $('#pn-go').textContent = nudgeTarget === 'alerts' ? 'Set up tender alerts' : 'Complete profile';
+    box.hidden = missing.length === 0;
+    if (!missing.length) return;
+    $('#pn-text').textContent = 'It fills in your tender documents for you and saves you typing. Still to add: ' + missing.join(', ') + '.';
+    $('#pn-fill').style.width = Math.round(((steps.length - missing.length) / steps.length) * 100) + '%';
+  }
+  let nudgeTarget = 'profile';
+  $('#pn-go').addEventListener('click', () => {
+    showTab(nudgeTarget);
+    const t = $('#tab-' + nudgeTarget); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
 
   async function loadProfile() {
     const form = $('#profile-form');
@@ -484,6 +536,7 @@
       cdMsg(err.message || 'Could not load your documents.', 'err');
     }
     renderCompanyDocs();
+    updateNudge();
   }
 
   // ===================================================================
@@ -496,6 +549,7 @@
     pv.innerHTML = mySig ? `<img alt="Your signature" src="${esc(mySig.png)}">` : '<p class="muted">No signature yet.</p>';
     $('#sig-draw').textContent = mySig ? 'Draw a new one' : 'Draw signature';
     $('#sig-remove').hidden = !mySig;
+    updateNudge();
   }
   async function loadSignature() {
     try { mySig = (await MWAuth.api('/api/account/signature')).signature || null; } catch (_) { mySig = null; }
@@ -513,6 +567,80 @@
     try { await MWAuth.api('/api/account/signature', { method: 'DELETE' }); mySig = null; renderSignature(); sgMsg('Removed.', 'ok'); }
     catch (err) { sgMsg(err.message, 'err'); }
   });
+
+  // ===================================================================
+  // Tender alerts
+  // ===================================================================
+  const PROVINCES = ['Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu-Natal', 'Limpopo', 'Mpumalanga', 'Northern Cape', 'North West', 'Western Cape'];
+  let alertPrefs = null;
+  const alSel = { cats: new Set(), provs: new Set() };
+  function alMsg(text, cls) { const m = $('#al-msg'); m.hidden = !text; m.textContent = text || ''; m.className = 'form-msg ' + (cls || ''); }
+
+  function alRenderChips() {
+    document.querySelectorAll('#al-cats .chip').forEach((b) => b.setAttribute('aria-pressed', String(alSel.cats.has(b.dataset.v))));
+    document.querySelectorAll('#al-provs .chip').forEach((b) => b.setAttribute('aria-pressed', String(alSel.provs.has(b.dataset.v))));
+  }
+  function alResult(n) {
+    const el = $('#al-result');
+    if (n == null) { el.hidden = true; return; }
+    el.hidden = false;
+    el.textContent = n === 0
+      ? 'No open tenders match right now. Try fewer keywords or more provinces. We will email you when new ones appear.'
+      : n + (n === 1 ? ' open tender matches' : ' open tenders match') + ' right now. You will get up to 10 of them tomorrow morning, then new ones as they appear.';
+  }
+  function alSync() {
+    const on = $('#alerts-form').enabled.checked;
+    $('#al-state').textContent = on ? 'Alerts are ON' : 'Email me matching tenders';
+    const m = $('#alerts-meter'); m.textContent = alertPrefs && alertPrefs.enabled ? '✓' : ''; m.classList.toggle('done', !!(alertPrefs && alertPrefs.enabled));
+  }
+  function alFill(prefs) {
+    const f = $('#alerts-form');
+    f.enabled.checked = !!prefs.enabled;
+    alSel.cats = new Set(prefs.categories || []); alSel.provs = new Set(prefs.provinces || []);
+    f.keywords.value = (prefs.keywords || []).join(', ');
+    alRenderChips(); alSync();
+  }
+
+  (function buildAlertsUi() {
+    const wrap = $('#al-provs');
+    PROVINCES.forEach((p) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.dataset.v = p; b.setAttribute('aria-pressed', 'false'); b.textContent = p; wrap.appendChild(b); });
+    $('#al-cats').addEventListener('click', (e) => { const b = e.target.closest('.chip'); if (!b) return; alSel.cats.has(b.dataset.v) ? alSel.cats.delete(b.dataset.v) : alSel.cats.add(b.dataset.v); alRenderChips(); });
+    wrap.addEventListener('click', (e) => { const b = e.target.closest('.chip'); if (!b) return; alSel.provs.has(b.dataset.v) ? alSel.provs.delete(b.dataset.v) : alSel.provs.add(b.dataset.v); alRenderChips(); });
+    $('#alerts-form').enabled.addEventListener('change', alSync);
+    $('#al-use-ind').addEventListener('click', () => { const v = $('#profile-form').industries.value.trim(); if (v) $('#alerts-form').keywords.value = v; else alMsg('Add your industries in the Company profile first.', 'err'); });
+
+    $('#alerts-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target, btn = f.querySelector('button[type=submit]');
+      btn.disabled = true; alMsg('Saving…');
+      try {
+        const r = await MWAuth.api('/api/account/alerts', { method: 'PUT', body: JSON.stringify({ enabled: f.enabled.checked, categories: [...alSel.cats], provinces: [...alSel.provs], keywords: f.keywords.value }) });
+        alertPrefs = r.prefs; alFill(r.prefs); alResult(r.matches); updateNudge();
+        alMsg(r.prefs.enabled ? 'Saved. Alerts are on ✓' : 'Saved. Alerts are off.', 'ok');
+      } catch (err) { alMsg(err.message || 'Could not save.', 'err'); }
+      finally { btn.disabled = false; }
+    });
+    $('#al-test').addEventListener('click', async (e) => {
+      const btn = e.target; btn.disabled = true; alMsg('Sending…');
+      try {
+        const r = await MWAuth.api('/api/account/alerts/test', { method: 'POST', body: '{}' });
+        alMsg(r.sent ? 'Test email sent to ' + (currentUser && currentUser.email) + '. Check your inbox (and spam).' : (r.message || 'Nothing to send.'), r.sent ? 'ok' : 'err');
+      } catch (err) { alMsg(err.message || 'Could not send the test email.', 'err'); }
+      finally { btn.disabled = false; }
+    });
+  })();
+
+  async function loadAlerts() {
+    $('#al-email').textContent = currentUser && currentUser.email ? 'Alerts are sent to ' + currentUser.email + '.' : '';
+    try {
+      const r = await MWAuth.api('/api/account/alerts');
+      alertPrefs = r.prefs; alFill(r.prefs); alResult(r.enabled === false ? null : r.matches);
+      // first time here: suggest the industries from the company profile as keywords
+      if (!(r.prefs.keywords || []).length && !r.prefs.enabled) { const ind = $('#profile-form').industries.value.trim(); if (ind) $('#alerts-form').keywords.value = ind; }
+      if (!r.prefs.enabled && !(r.prefs.categories || []).length && !(r.prefs.keywords || []).length) alResult(null);
+    } catch (err) { alMsg(err.message || '', 'err'); }
+    updateNudge();
+  }
 
   init();
 })();

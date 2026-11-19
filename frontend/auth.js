@@ -121,7 +121,27 @@
     });
   }
 
+  // Where to go after signing in / registering. Only paths on this site are allowed.
+  function safeNext(raw, fallback) {
+    raw = String(raw || '');
+    if (!raw || /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith('//') || raw.includes('\\')) return fallback || 'dashboard.html';
+    return raw.replace(/^\//, '');
+  }
+  // "I was in the middle of something": remembered across sign-in / account creation (same browser, 6 hours).
+  function setPending(o) { try { localStorage.setItem('mw:pending', JSON.stringify(Object.assign({}, o, { t: Date.now() }))); } catch (_) {} }
+  function takePending() {
+    try {
+      const o = JSON.parse(localStorage.getItem('mw:pending') || 'null');
+      localStorage.removeItem('mw:pending');
+      if (o && Date.now() - o.t < 6 * 3600e3) return o;
+    } catch (_) {}
+    return null;
+  }
+
   global.MWAuth = {
+    safeNext,
+    setPending,
+    takePending,
     getClient,
     getSession,
     getUser,

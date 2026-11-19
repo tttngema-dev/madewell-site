@@ -18,14 +18,12 @@
     <a class="brand" href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" width="57" height="84" /></a>
     <nav>
       <a href="tenders.html">Tenders</a>
-      <a href="dashboard.html" aria-current="page">Dashboard</a>
       <span class="nav-email hide-m" data-auth-email></span>
       <button type="button" class="btn small ghost-btn" id="btn-signout">Sign out</button>
     </nav>
   </header>
   <nav class="svc-bar tenders-bar" aria-label="Tenders navigation">
     <a href="tenders.html">Browse tenders</a>
-    <a href="dashboard.html" class="on" aria-current="page">Dashboard</a>
   </nav>
   <div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
 
@@ -39,6 +37,16 @@
       <a class="btn" href="tenders.html">Find tenders</a>
     </header>
 
+    <aside class="profile-nudge" id="profile-nudge" role="region" aria-label="Complete your company profile" hidden>
+      <div class="pn-icon" aria-hidden="true">!</div>
+      <div class="pn-body">
+        <strong>Complete your company profile</strong>
+        <span id="pn-text"></span>
+        <div class="pn-bar" aria-hidden="true"><i id="pn-fill"></i></div>
+      </div>
+      <button type="button" class="btn small" id="pn-go">Complete profile</button>
+    </aside>
+
     <section class="stats" id="stats" aria-label="Summary">
       <div class="stat"><span class="stat-n" data-stat="saved">–</span><span class="stat-l">Saved tenders</span></div>
       <div class="stat stat-warn"><span class="stat-n" data-stat="soon">–</span><span class="stat-l">Closing within 7 days</span></div>
@@ -49,6 +57,7 @@
     <div class="dash-tabs" role="tablist" aria-label="Dashboard sections">
       <button type="button" role="tab" id="tabbtn-tenders" aria-controls="tab-tenders" aria-selected="true" data-tab="tenders">Saved tenders <span class="tab-count" id="count-saved"></span></button>
       <button type="button" role="tab" id="tabbtn-profile" aria-controls="tab-profile" aria-selected="false" data-tab="profile">Company profile <span class="tab-meter" id="profile-meter" title="Profile completeness"></span></button>
+      <button type="button" role="tab" id="tabbtn-alerts" aria-controls="tab-alerts" aria-selected="false" data-tab="alerts">Tender alerts <span class="tab-meter" id="alerts-meter" title="Tender alerts"></span></button>
     </div>
 
     <div id="tab-tenders" class="tab-pane" role="tabpanel" aria-labelledby="tabbtn-tenders">
@@ -63,6 +72,48 @@
           <div id="deadlines" class="deadline-list"><p class="muted">Loading…</p></div>
         </aside>
       </div>
+    </div>
+
+    <div id="tab-alerts" class="tab-pane" role="tabpanel" aria-labelledby="tabbtn-alerts" hidden>
+      <section class="card profile-card" id="panel-alerts">
+        <div class="profile-top">
+          <div>
+            <h2>Tender alerts</h2>
+            <p class="fine">Tell us what you want to bid on. Each morning we email you <b>one summary</b> of the best new matches: <b>never more than 10 tenders a day</b>, and never the same tender twice.</p>
+          </div>
+        </div>
+        <form id="alerts-form" class="profile-form" novalidate>
+          <section class="pf-section">
+            <div class="pf-head"><h3>Email alerts</h3><p>Switch it on to start getting matches.</p></div>
+            <div class="al-col">
+              <label class="al-switch"><input type="checkbox" name="enabled"><span class="al-track" aria-hidden="true"></span><span id="al-state">Email me matching tenders</span></label>
+              <p class="fine" id="al-email"></p>
+            </div>
+          </section>
+          <section class="pf-section">
+            <div class="pf-head"><h3>Type of tender</h3><p>Pick one or more.</p></div>
+            <div class="al-col"><div class="filter-chips" id="al-cats" role="group" aria-label="Type of tender">
+              <button type="button" class="chip" data-v="goods" aria-pressed="false">Goods <i>supplies, equipment</i></button>
+              <button type="button" class="chip" data-v="services" aria-pressed="false">Services <i>cleaning, security, consulting</i></button>
+              <button type="button" class="chip" data-v="works" aria-pressed="false">Works <i>construction, maintenance</i></button>
+            </div></div>
+          </section>
+          <section class="pf-section">
+            <div class="pf-head"><h3>Provinces</h3><p>Leave all unticked to get tenders from every province.</p></div>
+            <div class="al-col"><div class="filter-chips" id="al-provs" role="group" aria-label="Provinces"></div></div>
+          </section>
+          <section class="pf-section">
+            <div class="pf-head"><h3>Keywords</h3><p>Words that describe the work you do. A tender is sent if its title or description contains one of them.</p></div>
+            <div class="pf-fields"><label class="span-all">Keywords<input name="keywords" type="text" placeholder="cleaning, security, construction, IT" autocomplete="off" /><small>Separate with commas. <button type="button" class="linkish" id="al-use-ind">Use my industries from the company profile</button></small></label></div>
+          </section>
+          <div class="al-result" id="al-result" aria-live="polite" hidden></div>
+          <div class="pf-save">
+            <span id="al-msg" class="form-msg" role="status" hidden></span>
+            <button type="button" class="btn ghost-btn" id="al-test">Send me a test email</button>
+            <button type="submit" class="btn">Save alerts</button>
+          </div>
+        </form>
+      </section>
     </div>
 
     <div id="tab-profile" class="tab-pane" role="tabpanel" aria-labelledby="tabbtn-profile" hidden>

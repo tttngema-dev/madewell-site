@@ -227,31 +227,34 @@
       }).join('') + '</ul>';
   }
 
+  const savePayload = (t) => ({
+    ocid: t.ocid, title: t.title, buyer: t.buyer, closing_date: t.closingDate, status: 'watching',
+    documents: (t.documents || []).map((d) => ({ id: d.id, title: d.title, url: d.url, format: d.format, datePublished: d.datePublished })),
+  });
   async function saveTender(t) {
-    return MWAuth.api('/api/account/saved', {
-      method: 'POST',
-      body: JSON.stringify({
-        ocid: t.ocid, title: t.title, buyer: t.buyer, closing_date: t.closingDate, status: 'watching',
-        documents: (t.documents || []).map((d) => ({ id: d.id, title: d.title, url: d.url, format: d.format, datePublished: d.datePublished })),
-      }),
-    });
+    return MWAuth.api('/api/account/saved', { method: 'POST', body: JSON.stringify(savePayload(t)) });
   }
+  // Not signed in yet: remember what they wanted, so after sign-in / registering they land on the dashboard with it done.
+  const goSignIn = (action, t, doc) => { MWAuth.setPending({ type: action, tender: savePayload(t), doc: doc }); location.href = 'login.html?next=dashboard.html'; };
 
-  function openPreview(t, idx) {
+  async function openPreview(t, idx) {
     const d = (t.documents || [])[idx];
     if (!d || !window.MWDocViewer) return;
+    let signedIn = false;
+    try { signedIn = !!(window.MWAuth && await MWAuth.getUser()); } catch (_) {}
     MWDocViewer.open({
-      url: d.url, title: d.title, tenderTitle: t.title, ocid: t.ocid, editable: false, sourceUrl: d.url,
-      fillLabel: 'Save & fill in on dashboard',
+      url: d.url, title: d.title, tenderTitle: t.title, ocid: t.ocid, editable: false,
+      fillLabel: 'Fill in document',
+      guestHint: signedIn ? null : { loginUrl: 'login.html?next=dashboard.html', signupUrl: 'signup.html?next=dashboard.html', onGo: () => MWAuth.setPending({ type: 'fill', tender: savePayload(t), doc: idx }) },
       onFill: async (btn) => {
         const user = window.MWAuth ? await MWAuth.getUser() : null;
-        if (!user) { location.href = 'login.html?next=' + encodeURIComponent(location.pathname); return; }
-        btn.disabled = true; btn.textContent = 'Saving…';
+        if (!user) { goSignIn('fill', t, idx); return; }
+        btn.disabled = true; btn.textContent = 'Opening…';
         try {
           await saveTender(t);
           location.href = 'dashboard.html?open=' + encodeURIComponent(t.ocid) + '&doc=' + idx;
         } catch (err) {
-          btn.disabled = false; btn.textContent = 'Save & fill in on dashboard';
+          btn.disabled = false; btn.innerHTML = '<span class="dv-l">Fill in document</span><span class="dv-s">Fill in</span>';
           alert(err.message || 'Could not save this tender.');
         }
       },
@@ -317,9 +320,7 @@
     const user = window.MWAuth ? await MWAuth.getUser() : null;
     if (!user) {
       saveBtn.textContent = 'Sign in to save';
-      saveBtn.addEventListener('click', () => {
-        location.href = 'login.html?next=' + encodeURIComponent(location.pathname);
-      });
+      saveBtn.addEventListener('click', () => goSignIn('save', t));
     } else {
       try {
         const check = await MWAuth.api('/api/account/saved/ocid/' + encodeURIComponent(t.ocid));
@@ -390,4 +391,9 @@
   state.sort = $('#sort').value;
   if (window.MWAuth) MWAuth.hydrateNav();
   load();
+  // links in alert emails open one tender directly: tenders.html?ocid=...
+  const deep = new URLSearchParams(location.search).get('ocid');
+  if (deep) {
+    fetch(API_BASE + '/api/tenders/' + encodeURIComponent(deep)).then((r) => r.json()).then((j) => { if (j && j.item) openDetail(j.item); }).catch(() => {});
+  }
 })();

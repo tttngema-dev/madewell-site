@@ -226,3 +226,22 @@ button.dv-w.on { background: rgba(255, 211, 107, 0.6); }
   .dv-chip { min-height: 2.8rem; }
 }
 .dv { -webkit-tap-highlight-color: transparent; }
+
+/* ---- "sign in to fill in" funnel (visitors who aren't signed in) ---- */
+.dv-actions { position: relative; }
+@keyframes dvPulse { 0% { box-shadow: 0 0 0 0 rgba(245, 166, 35, 0.85); } 70% { box-shadow: 0 0 0 14px rgba(245, 166, 35, 0); } 100% { box-shadow: 0 0 0 0 rgba(245, 166, 35, 0); } }
+@keyframes dvBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+.dv-pulse { animation: dvPulse 1.5s ease-out infinite; }
+.dv-funnel { position: absolute; z-index: 30; top: calc(100% + 16px); right: 0; width: min(330px, calc(100vw - 20px)); display: grid; gap: 0.4rem; background: var(--bulb); color: #1a1200; border-radius: 14px; padding: 0.85rem 2.3rem 0.9rem 1rem; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55); animation: dvBob 1.6s ease-in-out infinite; text-align: left; }
+.dv-funnel::before { content: ""; position: absolute; top: -9px; right: 34px; border: 9px solid transparent; border-top: 0; border-bottom-color: var(--bulb); }
+.dv-funnel strong { font-size: 1.02rem; line-height: 1.25; }
+.dv-funnel span { font-size: 0.86rem; line-height: 1.4; }
+.dv-funnel-links { display: flex !important; gap: 0.5rem; margin-top: 0.3rem; flex-wrap: wrap; }
+.dv-funnel .dv-btn { background: rgba(26, 18, 0, 0.1); color: #1a1200; border-color: rgba(26, 18, 0, 0.35); text-decoration: none; }
+.dv-funnel .dv-btn.dv-primary { background: #1a1200; color: var(--bulb); border-color: #1a1200; }
+.dv-funnel-x { position: absolute; top: 0.3rem; right: 0.35rem; width: 2rem; height: 2rem; border: 0; background: transparent; font-size: 1.4rem; line-height: 1; color: #1a1200; cursor: pointer; border-radius: 8px; }
+@media (max-width: 760px), (pointer: coarse) and (max-height: 520px) {
+  .dv-funnel { position: fixed; top: calc(3.9rem + env(safe-area-inset-top)); left: 0.6rem; right: 0.6rem; width: auto; }
+  .dv-funnel::before { right: 2.6rem; }
+}
+@media (prefers-reduced-motion: reduce) { .dv-pulse, .dv-funnel { animation: none; } }

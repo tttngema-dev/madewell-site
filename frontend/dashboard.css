@@ -215,3 +215,36 @@
 .cdoc button.linkish { background: none; border: 0; color: var(--soft); font: inherit; font-size: 0.85rem; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; padding: 0.4rem; }
 .cdoc button.linkish:hover { color: #ff8a7a; }
 .cdoc-exp label { display: flex; align-items: center; gap: 0.5rem; }
+
+/* ---- "complete your company profile" banner ---- */
+@keyframes pnGlow { 0%, 100% { box-shadow: 0 0 0 0 rgba(245, 166, 35, 0.5); } 50% { box-shadow: 0 0 0 8px rgba(245, 166, 35, 0); } }
+.profile-nudge { display: flex; align-items: center; gap: 1rem; margin: 0 0 1.25rem; padding: 0.9rem 1.1rem; background: linear-gradient(90deg, rgba(245, 166, 35, 0.2), rgba(245, 166, 35, 0.08)); border: 1.5px solid var(--gold); border-radius: 14px; animation: pnGlow 2.4s ease-in-out infinite; }
+.profile-nudge[hidden] { display: none; }
+.pn-icon { flex: none; width: 2.2rem; height: 2.2rem; border-radius: 50%; background: var(--gold); color: #1a1200; font-weight: 800; display: grid; place-items: center; font-size: 1.2rem; }
+.pn-body { flex: 1; min-width: 0; display: grid; gap: 0.25rem; }
+.pn-body strong { font-size: 1.02rem; }
+.pn-body span { font-size: 0.88rem; color: var(--soft); line-height: 1.4; }
+.pn-bar { height: 6px; border-radius: 99px; background: rgba(255, 255, 255, 0.12); overflow: hidden; margin-top: 0.2rem; }
+.pn-bar i { display: block; height: 100%; background: var(--gold); border-radius: 99px; transition: width 0.4s; }
+@media (max-width: 560px) { .profile-nudge { flex-wrap: wrap; } .profile-nudge .btn { width: 100%; } .pn-icon { display: none; } }
+@media (prefers-reduced-motion: reduce) { .profile-nudge { animation: none; } }
+
+/* ---- tender alerts tab + toast + just-saved flash ---- */
+.al-col { display: grid; gap: 0.6rem; align-content: start; min-width: 0; }
+.al-switch { display: inline-flex; align-items: center; gap: 0.75rem; cursor: pointer; font-weight: 700; font-size: 1.02rem; }
+.al-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.al-track { position: relative; flex: none; width: 3.1rem; height: 1.8rem; border-radius: 999px; background: rgba(255, 255, 255, 0.18); transition: background 0.2s; }
+.al-track::after { content: ""; position: absolute; top: 0.2rem; left: 0.2rem; width: 1.4rem; height: 1.4rem; border-radius: 50%; background: #fff; transition: transform 0.2s; }
+.al-switch input:checked + .al-track { background: #2fbf71; }
+.al-switch input:checked + .al-track::after { transform: translateX(1.3rem); }
+.al-switch input:focus-visible + .al-track { outline: 3px solid var(--gold); outline-offset: 2px; }
+#al-cats .chip, #al-provs .chip { min-height: 2.6rem; }
+#al-use-ind { font-size: 0.78rem; }
+.al-result { margin: 0 1.5rem 1rem; padding: 0.8rem 1rem; border-radius: 12px; background: rgba(127, 224, 164, 0.12); border: 1px solid rgba(127, 224, 164, 0.4); color: #bff0d3; font-size: 0.92rem; }
+.al-result[hidden] { display: none; }
+#profile-form .linkish, #alerts-form .linkish { background: none; border: 0; padding: 0; font: inherit; color: var(--bulb); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.toast { position: fixed; left: 50%; bottom: calc(1.5rem + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 200; max-width: min(92vw, 28rem); background: #1f9d5c; color: #fff; font-weight: 700; padding: 0.8rem 1.2rem; border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); }
+.toast.err { background: #b3372b; }
+@keyframes justSaved { 0%, 100% { box-shadow: 0 0 0 0 rgba(245, 166, 35, 0); } 30% { box-shadow: 0 0 0 4px rgba(245, 166, 35, 0.8); } }
+.just-saved { animation: justSaved 2s ease 2; }
+@media (max-width: 560px) { .al-result { margin: 0 1rem 1rem; } .pf-save #al-test { width: 100%; } }

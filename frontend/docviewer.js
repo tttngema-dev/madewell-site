@@ -21,8 +21,12 @@
   let libsPromise = null;
   function loadLibs(needEditor) {
     if (!libsPromise) {
-      libsPromise = import(BASE + 'vendor/pdfjs/pdf.min.mjs').then((m) => {
-        m.GlobalWorkerOptions.workerSrc = BASE + 'vendor/pdfjs/pdf.worker.min.mjs';
+      // Phones and older browsers get the "legacy" build of the PDF engine: it works on older Safari/Chrome
+      // versions where the modern build silently draws blank or broken pages.
+      const modern = typeof Promise.withResolvers === 'function' && typeof Array.prototype.at === 'function' && typeof structuredClone === 'function' && !isPhone() && !(global.matchMedia && global.matchMedia('(pointer: coarse)').matches);
+      const dir = BASE + 'vendor/pdfjs/' + (modern ? '' : 'legacy/');
+      libsPromise = import(dir + 'pdf.min.mjs').then((m) => {
+        m.GlobalWorkerOptions.workerSrc = dir + 'pdf.worker.min.mjs';
         return m;
       });
     }
@@ -431,11 +435,6 @@
     btnDownload.innerHTML = editable ? '<span class="dv-l">Download PDF</span><span class="dv-s">Download</span>' : 'Download';
     btnDownload.disabled = true;
     actionsEl.appendChild(btnDownload);
-    if (!editable && o.sourceUrl) {
-      const a = document.createElement('a');
-      a.className = 'dv-btn'; a.href = o.sourceUrl; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Open original';
-      actionsEl.appendChild(a);
-    }
     let btnEmail = null;
     if (editable) {
       btnEmail = document.createElement('button');
@@ -443,8 +442,23 @@
       actionsEl.appendChild(btnEmail);
     } else if (o.onFill) {
       const b = document.createElement('button');
-      b.type = 'button'; b.className = 'dv-btn dv-primary'; b.dataset.act = 'fill'; b.textContent = o.fillLabel || 'Fill in this document';
+      b.type = 'button'; b.className = 'dv-btn dv-primary'; b.dataset.act = 'fill';
+      b.innerHTML = '<span class="dv-l">' + esc(o.fillLabel || 'Fill in document') + '</span><span class="dv-s">Fill in</span>';
       actionsEl.appendChild(b);
+      if (o.guestHint) {
+        // visitors who aren't signed in: a pulsing button and a speech bubble pointing at it
+        b.classList.add('dv-pulse');
+        const tip = document.createElement('div');
+        tip.className = 'dv-funnel'; tip.setAttribute('role', 'status');
+        tip.innerHTML = '<button type="button" class="dv-funnel-x" aria-label="Dismiss">&times;</button>' +
+          '<strong>Sign in or register to fill in this document</strong>' +
+          '<span>It&rsquo;s free. Fill it in, add your stamp and signature, and download it.</span>' +
+          '<span class="dv-funnel-links"><a class="dv-btn dv-primary" href="' + esc(o.guestHint.loginUrl) + '">Sign in</a><a class="dv-btn" href="' + esc(o.guestHint.signupUrl) + '">Create account</a></span>';
+        actionsEl.appendChild(tip);
+        tip.querySelector('.dv-funnel-x').addEventListener('click', () => tip.remove());
+        tip.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => { try { o.guestHint.onGo && o.guestHint.onGo(); } catch (_) {} }));
+        b.addEventListener('click', () => tip.remove());
+      }
     }
 
     // ------------------------------------------------------------ persistence
@@ -523,12 +537,15 @@
       state.scale = fitScale();
       pagesEl.innerHTML = '';
       if (observer) observer.disconnect();
+      renderTasks.forEach((t) => { try { t.cancel(); } catch (_) {} }); renderTasks.clear();
       observer = new IntersectionObserver((entries) => {
         entries.forEach((en) => {
           const n = +en.target.dataset.page;
+          const pg = state.pages[n - 1];
+          if (pg) pg.visible = en.isIntersecting;
           if (en.isIntersecting) renderPage(n); else unrenderPage(n);
         });
-      }, { root: scrollEl, rootMargin: '900px 0px' });
+      }, { root: scrollEl, rootMargin: isPhone() ? '500px 0px' : '900px 0px' });
       state.pages.forEach((p) => {
         const wrap = document.createElement('div');
         wrap.className = 'dv-page';
@@ -536,7 +553,7 @@
         wrap.style.width = Math.round(p.w * state.scale) + 'px';
         wrap.style.height = Math.round(p.h * state.scale) + 'px';
         wrap.innerHTML = '<canvas></canvas><div class="dv-ov"></div><span class="dv-pn">' + p.n + ' / ' + state.pages.length + '</span>';
-        p.el = wrap; p.rendered = false;
+        p.el = wrap; p.rendered = false; p.visible = false; p.renderEl = null;
         pagesEl.appendChild(wrap);
         if (editable) buildOverlay(p);
         observer.observe(wrap);
@@ -544,24 +561,46 @@
       });
     }
 
-    async function renderPage(n) {
+    // One page at a time on phones (several big canvases at once is what makes phones draw blank pages).
+    const slots = { n: 0, q: [] };
+    const maxSlots = () => (isPhone() ? 1 : 3);
+    function acquire() { return new Promise((res) => { const go = () => { if (slots.n < maxSlots()) { slots.n++; res(); } else slots.q.push(go); }; go(); }); }
+    function release() { slots.n--; const nx = slots.q.shift(); if (nx) nx(); }
+
+    async function renderPage(n, attempt) {
+      attempt = attempt || 0;
       const p = state.pages[n - 1];
-      if (!p || p.rendered || p.rendering) return;
-      p.rendering = true;
+      if (!p || p.rendered) return;
+      const el = p.el;
+      if (p.renderEl === el) return; // already drawing this exact page element
+      p.renderEl = el;
+      let task = null, ok = false, failed = false;
+      await acquire();
       try {
+        if (p.el !== el || !p.visible) return; // layout changed or scrolled far away while waiting
         const page = await state.pdf.getPage(n);
         const dpr = Math.min(global.devicePixelRatio || 1, 2);
-        const vp = page.getViewport({ scale: state.scale * dpr });
-        const canvas = p.el.querySelector('canvas');
+        let rs = state.scale * dpr * Math.pow(0.7, attempt); // a retry draws a bit smaller
+        const maxPx = isPhone() ? 5e6 : 16e6; // phone browsers refuse (draw nothing for) very large canvases
+        const v0 = page.getViewport({ scale: rs });
+        if (v0.width * v0.height > maxPx) rs *= Math.sqrt(maxPx / (v0.width * v0.height));
+        const vp = page.getViewport({ scale: rs });
+        const canvas = el.querySelector('canvas');
         canvas.width = Math.floor(vp.width); canvas.height = Math.floor(vp.height);
-        canvas.style.width = p.el.style.width; canvas.style.height = p.el.style.height;
-        const task = page.render({ canvasContext: canvas.getContext('2d'), viewport: vp });
+        canvas.style.width = el.style.width; canvas.style.height = el.style.height;
+        task = page.render({ canvasContext: canvas.getContext('2d'), viewport: vp });
         renderTasks.set(n, task);
         await task.promise;
-        p.rendered = true;
+        if (p.el === el) { p.rendered = true; ok = true; }
       } catch (err) {
-        if (!(err && err.name === 'RenderingCancelledException')) console.warn('[docviewer] render', n, err);
-      } finally { p.rendering = false; renderTasks.delete(n); }
+        if (!(err && err.name === 'RenderingCancelledException')) { console.warn('[docviewer] render', n, err); failed = true; }
+      } finally {
+        release();
+        if (renderTasks.get(n) === task) renderTasks.delete(n);
+        if (p.renderEl === el) p.renderEl = null;
+      }
+      // Cancelled by a quick scroll/zoom, or failed: if the page is still on screen, draw it again.
+      if (!ok && p.el === el && p.visible && !p.rendered && attempt < 4) setTimeout(() => renderPage(n, attempt + 1), failed ? 250 : 0);
     }
     function unrenderPage(n) {
       const p = state.pages[n - 1];
@@ -1383,7 +1422,13 @@
         }
         if (!isPdfBytes(buf)) { fail('This file isn’t a PDF, so it can’t be previewed here. You can download it instead.', true); return; }
         state.bytes = new Uint8Array(buf);
-        state.pdf = await pdfjs.getDocument({ data: state.bytes.slice(0) }).promise;
+        state.pdf = await pdfjs.getDocument({
+          data: state.bytes.slice(0),
+          // fonts, colour profiles and image decoders the PDF may need (without these, text and scans can be missing or distorted)
+          standardFontDataUrl: BASE + 'vendor/pdfjs/standard_fonts/',
+          iccUrl: BASE + 'vendor/pdfjs/iccs/',
+          wasmUrl: BASE + 'vendor/pdfjs/wasm/',
+        }).promise;
 
         // page sizes up-front so scrolling is stable
         const n = state.pdf.numPages;

@@ -42,6 +42,17 @@
         <button class="btn" type="submit">Create account</button>
       </form>
 
+      <form id="form-verify" class="auth-form" hidden>
+        <h2 style="font-size:1.2rem">Check your email</h2>
+        <p class="fine" id="verify-sent">We emailed you a code.</p>
+        <label>Verification code
+          <input type="text" name="code" required inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="12" placeholder="123456" style="letter-spacing:.3em;font-size:1.4rem;text-align:center" />
+        </label>
+        <p id="msg-verify" class="form-msg" role="status" hidden></p>
+        <button class="btn" type="submit">Verify &amp; continue</button>
+        <p class="fine"><button type="button" id="verify-resend" class="linkish">Send a new code</button></p>
+      </form>
+
       <p class="auth-switch">Already have an account? <a href="login.html">Sign in</a></p>
     </div>
   </main>
@@ -50,6 +61,9 @@
   <script src="config.js"></script>
   <script src="auth.js"></script>
   <script>
+    const NEXT = MWAuth.safeNext(new URLSearchParams(location.search).get('next'));
+    const LOGIN_HREF = 'login.html?next=' + encodeURIComponent(NEXT);
+    document.querySelectorAll('a[href="login.html"]').forEach((a) => { a.href = LOGIN_HREF; });
     document.getElementById('form-signup').addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
@@ -69,13 +83,21 @@
       try {
         const { data, error } = await MWAuth.signUp(email, password);
         if (error) throw error;
+        // Supabase hides whether an email is already registered: it answers "success" with a user that has no identities.
+        if (data && data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+          msg.hidden = false;
+          msg.className = 'form-msg err';
+          msg.innerHTML = 'An account with this email already exists. <a href="' + LOGIN_HREF + '">Sign in instead</a>.';
+          return;
+        }
         msg.hidden = false;
         msg.className = 'form-msg ok';
         if (data.session) {
           msg.textContent = 'Account created. Redirecting…';
-          setTimeout(() => (location.href = 'dashboard.html'), 800);
+          setTimeout(() => (location.href = NEXT), 800);
         } else {
-          msg.textContent = 'Check your email to confirm your account, then sign in.';
+          msg.hidden = true;
+          showVerify(email);
         }
       } catch (err) {
         msg.hidden = false;
@@ -84,6 +106,39 @@
       } finally {
         btn.disabled = false;
       }
+    });
+
+    let pendingEmail = '';
+    function say(id, text, ok) { const el = document.getElementById(id); el.hidden = !text; el.textContent = text || ''; el.className = 'form-msg ' + (ok ? 'ok' : 'err'); }
+    function cooldown(btn, secs) {
+      btn.disabled = true; let n = secs; const label = btn.dataset.label || (btn.dataset.label = btn.textContent);
+      const t = setInterval(() => { n--; if (n <= 0) { clearInterval(t); btn.disabled = false; btn.textContent = label; } else btn.textContent = label + ' (' + n + 's)'; }, 1000);
+      btn.textContent = label + ' (' + n + 's)';
+    }
+    function showVerify(email) {
+      pendingEmail = email;
+      document.getElementById('form-signup').hidden = true;
+      document.getElementById('form-verify').hidden = false;
+      document.getElementById('verify-sent').textContent = 'We emailed a code to ' + email + '. Enter it below to confirm your account. It can take a minute. Check spam too.';
+      document.querySelector('#form-verify [name=code]').focus();
+      cooldown(document.getElementById('verify-resend'), 30);
+    }
+    document.getElementById('form-verify').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = e.target.querySelector('button[type=submit]');
+      btn.disabled = true;
+      try {
+        const { error } = await MWAuth.verifySignupCode(pendingEmail, new FormData(e.target).get('code'));
+        if (error) throw error;
+        say('msg-verify', 'Verified. Taking you to your dashboard…', true);
+        setTimeout(() => (location.href = NEXT), 600);
+      } catch (err) {
+        say('msg-verify', /expired|invalid/i.test(err.message || '') ? 'That code is wrong or has expired. Check it, or send a new one.' : (err.message || 'Could not verify the code'), false);
+      } finally { btn.disabled = false; }
+    });
+    document.getElementById('verify-resend').addEventListener('click', async (e) => {
+      try { const { error } = await MWAuth.resendSignupCode(pendingEmail); if (error) throw error; say('msg-verify', 'New code sent.', true); cooldown(e.target, 30); }
+      catch (err) { say('msg-verify', err.message || 'Could not send a new code', false); }
     });
   </script>
 </body>
