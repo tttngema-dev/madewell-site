@@ -451,8 +451,8 @@
         const tip = document.createElement('div');
         tip.className = 'dv-funnel'; tip.setAttribute('role', 'status');
         tip.innerHTML = '<button type="button" class="dv-funnel-x" aria-label="Dismiss">&times;</button>' +
-          '<strong>Sign in or register to fill in this document</strong>' +
-          '<span>It&rsquo;s free. Fill it in, add your stamp and signature, and download it.</span>' +
+          '<strong>Your first document is free</strong>' +
+          '<span>Sign in or register, then fill this one in, add your stamp and signature, attach your company documents and download it. No payment needed.</span>' +
           '<span class="dv-funnel-links"><a class="dv-btn dv-primary" href="' + esc(o.guestHint.loginUrl) + '">Sign in</a><a class="dv-btn" href="' + esc(o.guestHint.signupUrl) + '">Create account</a></span>';
         actionsEl.appendChild(tip);
         tip.querySelector('.dv-funnel-x').addEventListener('click', () => tip.remove());
@@ -485,7 +485,10 @@
         setStatus('All changes saved ✓', 'ok');
       } catch (err) {
         state.saveMode = 'local';
-        setStatus('Saved on this device only', 'warn');
+        if (err && err.status === 402) {
+          setStatus('Go Pro to save more documents', 'warn');
+          if (global.MWBilling && !state.paywalled) { state.paywalled = true; MWBilling.openPaywall({ reason: 'doc', onUnlocked: () => { state.paywalled = false; state.dirty = true; saveNow(); }, onClose: () => { state.paywalled = false; } }); }
+        } else setStatus('Saved on this device only', 'warn');
         console.warn('[docviewer] server save failed:', err.message);
       }
     }
@@ -1064,7 +1067,7 @@
             go.textContent = 'Preparing…';
             download(await buildFilledPdf(), slug(o.title) + '-filled.pdf');
             try { localStorage.setItem(memKey, JSON.stringify({ mode: 'asis', ids: mem.ids || [] })); } catch (_) {}
-            dlg.remove(); return;
+            dlg.remove(); if (global.MWBilling) MWBilling.celebrate(); return;
           }
           if (!docs || !docs.length) { say(docs === null ? 'Still loading your documents…' : 'Upload your company documents first, or choose “Download as is”.', 'err'); return; }
           const ids = [...list.querySelectorAll('input[type=checkbox]:checked')].map((b) => b.value);
@@ -1076,7 +1079,7 @@
           const out = await buildMergedPdf(chosen, (i, n, name) => say('Adding ' + name + ' (' + i + ' of ' + n + ')…'));
           download(out, slug(o.title) + '-with-documents.pdf');
           try { localStorage.setItem(memKey, JSON.stringify({ mode: 'attach', ids })); } catch (_) {}
-          dlg.remove();
+          dlg.remove(); if (global.MWBilling) MWBilling.celebrate();
         } catch (err) { say(err.message || 'Could not prepare the PDF.', 'err'); }
         finally { go.disabled = false; sync(); }
       });
@@ -1205,13 +1208,15 @@
             method: 'POST',
             body: JSON.stringify({
               to, subject: form.subject.value, message: form.message.value, cc_me: form.cc_me.checked,
-              filename: slug(o.title) + '-filled.pdf', pdf_base64: bytesToBase64(out),
+              filename: slug(o.title) + '-filled.pdf', pdf_base64: bytesToBase64(out), ocid: o.ocid, doc_url: o.url,
             }),
           });
           emailMsg('Sent to ' + (r.sent_to || [to]).join(', ') + ' ✓', 'ok');
           send.textContent = 'Send again';
+          if (global.MWBilling) MWBilling.celebrate();
         } catch (err) {
-          emailMsg(err.message || 'Could not send the email.', 'err');
+          if (err && err.status === 402 && global.MWBilling) { emailEl.hidden = true; MWBilling.openPaywall({ reason: 'doc' }); }
+          else emailMsg(err.message || 'Could not send the email.', 'err');
           send.textContent = 'Send email';
         } finally { send.disabled = false; }
       });

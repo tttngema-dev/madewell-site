@@ -33,6 +33,7 @@
       location.href = 'index.html';
     });
     currentUser = user;
+    if (window.MWBilling) { MWBilling.mountPlanCard($('#plan-card')); MWBilling.syncNav(); MWBilling.handleReturn(); markAlertsCrown(); window.addEventListener('mw:billing', () => { markAlertsCrown(); refreshDocBoxes(); }); }
     const pending = await applyPending(); // a tender they tried to save / fill in before signing in or registering
     await Promise.all([loadSaved(), loadProfile(), loadCompanyDocs(), loadSignature()]);
     await loadAlerts();
@@ -93,7 +94,8 @@
     return item.documents;
   }
 
-  function openDoc(item, d) {
+  async function openDoc(item, d) {
+    if (window.MWBilling && !(await MWBilling.guardDoc(item.ocid, d.url))) return; // free document already used: the paywall shows instead
     MWDocViewer.open({
       url: d.url, title: d.title, tenderTitle: item.title || item.ocid, ocid: item.ocid, editable: true,
       onClose: async () => { await loadEdits(); const box = document.querySelector('[data-docs-for="' + CSS.escape(item.ocid) + '"]'); if (box && !box.hidden) renderDocs(item, box); },
@@ -108,20 +110,45 @@
       return;
     }
     box.innerHTML = '';
+    let bs = null;
+    if (window.MWBilling) { try { bs = await MWBilling.status(); } catch (_) {} }
     docs.forEach((d) => {
       const e = editFor(item.ocid, d.url);
+      const lock = bs && MWBilling.locked(bs, item.ocid, d.url) && MWDocViewer.canPreview(d);
+      const free = bs && (MWBilling.isTrialDoc(bs, item.ocid, d.url) || (!bs.pro && !bs.trial.used && MWDocViewer.canPreview(d)));
       const row = document.createElement('div');
       row.className = 'doc-line';
-      const meta = [d.format, e ? 'Filled in · edited ' + formatDate(e.updated_at) : ''].filter(Boolean).map(esc).join(' · ');
+      const meta = [d.format, e ? 'Filled in · edited ' + formatDate(e.updated_at) : ''].filter(Boolean).map(esc).join(' · ') + (free ? ' <span class="free-tag">Free document</span>' : '');
       const can = MWDocViewer.canPreview(d);
       row.innerHTML = `<div class="doc-info"><strong>${esc(d.title)}</strong><span>${meta}</span></div>` +
         (can
-          ? `<button type="button" class="btn small">${e ? 'Continue filling in' : 'Open &amp; fill in'}</button>`
+          ? `<button type="button" class="btn small ${lock ? 'dv-lock' : ''}">${lock ? MWBilling.crown('on-gold') + ' ' : ''}${e ? 'Continue filling in' : 'Open &amp; fill in'}</button>`
           : `<a class="btn small ghost-btn" href="${esc(d.url)}" target="_blank" rel="noopener">Download</a>`);
       const b = row.querySelector('button');
       if (b) b.addEventListener('click', () => openDoc(item, d));
       box.appendChild(row);
     });
+  }
+
+  // Crown on the Tender alerts tab while on the free plan; re-draw open document lists when the plan changes
+  async function markAlertsCrown() {
+    if (!window.MWBilling) return;
+    let s = null; try { s = await MWBilling.status(); } catch (_) { return; }
+    const c = $('#alerts-crown'), t = $('#al-protag');
+    if (c) { c.hidden = !!s.pro; c.innerHTML = s.pro ? '' : MWBilling.crown() + ' '; }
+    if (t) { t.hidden = !!s.pro; t.innerHTML = s.pro ? '' : MWBilling.crown() + ' Pro'; }
+  }
+  function refreshDocBoxes() {
+    document.querySelectorAll('.saved-docs').forEach((box) => {
+      if (box.hidden) return;
+      const item = savedItems.find((i) => i.ocid === box.dataset.docsFor);
+      if (item) renderDocs(item, box);
+    });
+  }
+  // The server says "Pro needed" (402): show the paywall instead of an error
+  function proGate(err) {
+    if (err && err.status === 402 && window.MWBilling) { MWBilling.openPaywall({ reason: (err.data && err.data.reason) || 'upgrade' }); return true; }
+    return false;
   }
 
   const STATUSES = ['watching', 'applying', 'submitted', 'won', 'lost'];
@@ -606,7 +633,14 @@
     PROVINCES.forEach((p) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.dataset.v = p; b.setAttribute('aria-pressed', 'false'); b.textContent = p; wrap.appendChild(b); });
     $('#al-cats').addEventListener('click', (e) => { const b = e.target.closest('.chip'); if (!b) return; alSel.cats.has(b.dataset.v) ? alSel.cats.delete(b.dataset.v) : alSel.cats.add(b.dataset.v); alRenderChips(); });
     wrap.addEventListener('click', (e) => { const b = e.target.closest('.chip'); if (!b) return; alSel.provs.has(b.dataset.v) ? alSel.provs.delete(b.dataset.v) : alSel.provs.add(b.dataset.v); alRenderChips(); });
-    $('#alerts-form').enabled.addEventListener('change', alSync);
+    $('#alerts-form').enabled.addEventListener('change', async (e) => {
+      const sw = e.target;
+      if (sw.checked && window.MWBilling) {
+        let st = null; try { st = await MWBilling.status(); } catch (_) {}
+        if (st && !st.pro) { sw.checked = false; alSync(); MWBilling.openPaywall({ reason: 'alerts', onUnlocked: () => { sw.checked = true; alSync(); alMsg('Pro is on. Press “Save alerts” to start getting emails.', 'ok'); } }); return; }
+      }
+      alSync();
+    });
     $('#al-use-ind').addEventListener('click', () => { const v = $('#profile-form').industries.value.trim(); if (v) $('#alerts-form').keywords.value = v; else alMsg('Add your industries in the Company profile first.', 'err'); });
 
     $('#alerts-form').addEventListener('submit', async (e) => {
@@ -617,7 +651,7 @@
         const r = await MWAuth.api('/api/account/alerts', { method: 'PUT', body: JSON.stringify({ enabled: f.enabled.checked, categories: [...alSel.cats], provinces: [...alSel.provs], keywords: f.keywords.value }) });
         alertPrefs = r.prefs; alFill(r.prefs); alResult(r.matches); updateNudge();
         alMsg(r.prefs.enabled ? 'Saved. Alerts are on ✓' : 'Saved. Alerts are off.', 'ok');
-      } catch (err) { alMsg(err.message || 'Could not save.', 'err'); }
+      } catch (err) { if (proGate(err)) { alMsg(''); f.enabled.checked = false; alSync(); } else alMsg(err.message || 'Could not save.', 'err'); }
       finally { btn.disabled = false; }
     });
     $('#al-test').addEventListener('click', async (e) => {
@@ -625,7 +659,7 @@
       try {
         const r = await MWAuth.api('/api/account/alerts/test', { method: 'POST', body: '{}' });
         alMsg(r.sent ? 'Test email sent to ' + (currentUser && currentUser.email) + '. Check your inbox (and spam).' : (r.message || 'Nothing to send.'), r.sent ? 'ok' : 'err');
-      } catch (err) { alMsg(err.message || 'Could not send the test email.', 'err'); }
+      } catch (err) { if (proGate(err)) alMsg(''); else alMsg(err.message || 'Could not send the test email.', 'err'); }
       finally { btn.disabled = false; }
     });
   })();

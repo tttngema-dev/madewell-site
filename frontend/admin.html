@@ -24,7 +24,7 @@
 .detail{white-space:pre-wrap;font-size:.9rem;line-height:1.55;margin-top:.7rem;border-top:1px solid var(--line);padding-top:.7rem;cursor:text}
 .adm select,.adm input{background:var(--paper);color:var(--stage);border-radius:8px;border:0;padding:.5rem .7rem;font:inherit}
 #login{max-width:360px;margin:20vh auto;padding:0 1rem;display:grid;gap:.8rem}
-#err{color:#ff9d9d}.muted{color:var(--soft);font-size:.85rem}
+#err{color:#ff9d9d}.pro-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.6rem;margin:.6rem 0}.pro-form label{display:grid;gap:.25rem;font-size:.85rem;color:var(--soft)}.pro-form small{color:var(--soft);font-size:.75rem}.off{opacity:.5}.muted{color:var(--soft);font-size:.85rem}
 </style></head>
 <body>
 <header class="top"><a class="brand" href="index.html"><img src="logo.png" alt="Made Well" width="57" height="84" /></a><nav><span id="upd" class="muted"></span></nav></header>
@@ -35,6 +35,21 @@
   <h2>Where people stop</h2><div id="funnel"></div>
   <h2>Where visitors come from</h2><div id="sources" class="muted"></div>
   <h2>Recent visitors</h2><div class="wrap"><table class="tbl"><thead><tr><th>Last seen</th><th>Got as far as</th><th>Device</th><th>From</th></tr></thead><tbody id="visitors"></tbody></table></div>
+  <h2>Pro plan &amp; promo codes</h2>
+  <div class="cards" id="pro-cards"></div>
+  <p class="muted" id="pro-note"></p>
+  <form id="promo-form" class="pro-form" autocomplete="off">
+    <label>New code<input name="code" placeholder="e.g. FRIENDS2026" maxlength="30" required /></label>
+    <label>Free days<input name="days" type="number" min="1" placeholder="empty = no end date" /><small>Empty = free with no end date</small></label>
+    <label>How many people<input name="max_uses" type="number" min="1" placeholder="empty = unlimited" /></label>
+    <label>Code stops working on<input name="expires_at" type="date" /></label>
+    <label>Note for you<input name="note" maxlength="120" placeholder="who it is for" /></label>
+    <label>&nbsp;<button class="btn small" type="submit">Create code</button></label>
+  </form>
+  <p id="promo-err" class="muted"></p>
+  <div class="wrap"><table class="tbl"><thead><tr><th>Code</th><th>Gives</th><th>Used</th><th>Stops</th><th>Note</th><th></th></tr></thead><tbody id="promo-rows"></tbody></table></div>
+  <h2>Pro members</h2>
+  <div class="wrap"><table class="tbl"><thead><tr><th>Email</th><th>How</th><th>Status</th><th>Until</th></tr></thead><tbody id="pro-people"></tbody></table></div>
   <h2>Registrations</h2><input id="q" placeholder="Search name, reference or email" style="width:100%;max-width:420px;margin-bottom:.5rem" /><div id="regs"></div>
 </main>
 <script>
@@ -79,7 +94,24 @@ function render(s) {
   $('#upd').textContent = 'Updated ' + new Date().toLocaleTimeString();
   renderRegs();
 }
-async function load() { try { render(await api('/api/admin/summary?range=' + range)); } catch (e) { if (/password/i.test(e.message)) logout(); else $('#upd').textContent = 'Error: ' + e.message; } }
+async function loadPro() {
+  try {
+    const p = await api('/api/admin/pro'); $('#pro-note').textContent = '';
+    $('#pro-cards').innerHTML = [[p.counts.paying, 'Paying R' + p.price + '/month'], ['R' + p.mrr, 'Monthly income'], [p.counts.promo, 'Free with a code'], [p.counts.cancelling, 'Not renewing']].map(([n, l]) => `<div class="card"><b>${esc(n)}</b><span>${esc(l)}</span></div>`).join('');
+    $('#promo-rows').innerHTML = p.codes.map((c) => `<tr class="${c.active ? '' : 'off'}"><td><b>${esc(c.code)}</b></td><td>${c.days ? c.days + ' days' : 'No end date'}</td><td>${c.uses}${c.max_uses ? ' / ' + c.max_uses : ''}</td><td>${c.expires_at ? new Date(c.expires_at).toLocaleDateString() : 'Never'}</td><td>${esc(c.note || '')}</td><td><button class="btn small" data-code="${esc(c.code)}" data-on="${c.active ? '0' : '1'}">${c.active ? 'Turn off' : 'Turn on'}</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted">No codes yet. Make one above.</td></tr>';
+    $('#pro-people').innerHTML = p.people.map((x) => `<tr><td>${esc(x.email || '')}</td><td>${x.source === 'promo' ? 'Code ' + esc(x.code || '') : 'Pays monthly'}</td><td>${x.pro ? (x.status === 'cancelled' ? 'Ends, not renewing' : 'Active') : 'Ended'}</td><td>${x.until ? new Date(x.until).toLocaleDateString() : 'No end date'}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">Nobody yet.</td></tr>';
+  } catch (e) { $('#pro-note').textContent = 'Pro plan data not available: ' + e.message + '. Run backend/sql/subscriptions.sql in Supabase.'; }
+}
+$('#promo-form').onsubmit = async (e) => {
+  e.preventDefault(); const f = e.target; $('#promo-err').textContent = '';
+  try { await api('/api/admin/promos', { method: 'POST', body: JSON.stringify({ code: f.code.value, days: f.days.value, max_uses: f.max_uses.value, expires_at: f.expires_at.value, note: f.note.value }) }); f.reset(); loadPro(); }
+  catch (err) { $('#promo-err').textContent = err.message; }
+};
+$('#promo-rows').onclick = async (e) => {
+  const b = e.target.closest('button[data-code]'); if (!b) return;
+  try { await api('/api/admin/promos/' + encodeURIComponent(b.dataset.code) + '/active', { method: 'POST', body: JSON.stringify({ active: b.dataset.on === '1' }) }); loadPro(); } catch (err) { alert(err.message); }
+};
+async function load() { loadPro(); try { render(await api('/api/admin/summary?range=' + range)); } catch (e) { if (/password/i.test(e.message)) logout(); else $('#upd').textContent = 'Error: ' + e.message; } }
 function logout() { sessionStorage.removeItem('mw_admin'); key = ''; clearInterval(timer); $('#app').hidden = true; $('#login').hidden = false; }
 async function start() {
   try { localStorage.setItem('mw_internal', '1'); } catch (e) {}  // keep your own visits out of the statistics

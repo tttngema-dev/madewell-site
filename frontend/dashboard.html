@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="dashboard.css" />
   <link rel="stylesheet" href="docviewer.css" />
+  <link rel="stylesheet" href="billing.css" />
   <script src="track.js"></script>
 </head>
 <body>
@@ -18,6 +19,7 @@
     <a class="brand" href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" width="57" height="84" /></a>
     <nav>
       <a href="tenders.html">Tenders</a>
+      <a href="#" class="btn small pro-btn" data-pro-nav hidden></a>
       <span class="nav-email hide-m" data-auth-email></span>
       <button type="button" class="btn small ghost-btn" id="btn-signout">Sign out</button>
     </nav>
@@ -36,6 +38,8 @@
       </div>
       <a class="btn" href="tenders.html">Find tenders</a>
     </header>
+
+    <section class="plan" id="plan-card" aria-label="Your plan" hidden></section>
 
     <aside class="profile-nudge" id="profile-nudge" role="region" aria-label="Complete your company profile" hidden>
       <div class="pn-icon" aria-hidden="true">!</div>
@@ -57,7 +61,7 @@
     <div class="dash-tabs" role="tablist" aria-label="Dashboard sections">
       <button type="button" role="tab" id="tabbtn-tenders" aria-controls="tab-tenders" aria-selected="true" data-tab="tenders">Saved tenders <span class="tab-count" id="count-saved"></span></button>
       <button type="button" role="tab" id="tabbtn-profile" aria-controls="tab-profile" aria-selected="false" data-tab="profile">Company profile <span class="tab-meter" id="profile-meter" title="Profile completeness"></span></button>
-      <button type="button" role="tab" id="tabbtn-alerts" aria-controls="tab-alerts" aria-selected="false" data-tab="alerts">Tender alerts <span class="tab-meter" id="alerts-meter" title="Tender alerts"></span></button>
+      <button type="button" role="tab" id="tabbtn-alerts" aria-controls="tab-alerts" aria-selected="false" data-tab="alerts"><span class="pro-crown" id="alerts-crown" hidden></span>Tender alerts <span class="tab-meter" id="alerts-meter" title="Tender alerts"></span></button>
     </div>
 
     <div id="tab-tenders" class="tab-pane" role="tabpanel" aria-labelledby="tabbtn-tenders">
@@ -84,7 +88,7 @@
         </div>
         <form id="alerts-form" class="profile-form" novalidate>
           <section class="pf-section">
-            <div class="pf-head"><h3>Email alerts</h3><p>Switch it on to start getting matches.</p></div>
+            <div class="pf-head"><h3>Email alerts <span class="pro-tag" id="al-protag" hidden></span></h3><p>Switch it on to start getting matches.</p></div>
             <div class="al-col">
               <label class="al-switch"><input type="checkbox" name="enabled"><span class="al-track" aria-hidden="true"></span><span id="al-state">Email me matching tenders</span></label>
               <p class="fine" id="al-email"></p>
@@ -220,6 +224,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script src="auth.js"></script>
+  <script src="pay.js"></script>
+  <script src="billing.js"></script>
   <script src="docviewer.js"></script>
   <script src="dashboard.js"></script>
 </body>
