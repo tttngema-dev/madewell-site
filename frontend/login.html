@@ -30,7 +30,7 @@
 
       <div class="tabs" role="tablist">
         <button type="button" class="tab active" data-tab="password" role="tab" aria-selected="true">Password</button>
-        <button type="button" class="tab" data-tab="magic" role="tab" aria-selected="false">Magic link</button>
+        <button type="button" class="tab" data-tab="magic" role="tab" aria-selected="false">Email code</button>
       </div>
 
       <form id="form-password" class="auth-form">
@@ -48,9 +48,19 @@
         <label>Email
           <input type="email" name="email" required autocomplete="email" placeholder="you@company.co.za" />
         </label>
-        <p class="fine">We will email you a one-time link. No password needed.</p>
+        <p class="fine">We will email you a 6-digit code. No password needed.</p>
         <p id="msg-magic" class="form-msg" role="status" hidden></p>
-        <button class="btn" type="submit">Send magic link</button>
+        <button class="btn" type="submit">Email me a code</button>
+      </form>
+
+      <form id="form-code" class="auth-form" hidden>
+        <p class="fine" id="code-sent">Enter the code we emailed you.</p>
+        <label>Verification code
+          <input type="text" name="code" required inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="12" placeholder="123456" style="letter-spacing:.3em;font-size:1.4rem;text-align:center" />
+        </label>
+        <p id="msg-code" class="form-msg" role="status" hidden></p>
+        <button class="btn" type="submit">Verify &amp; sign in</button>
+        <p class="fine"><button type="button" id="code-resend" class="linkish">Send a new code</button> &middot; <button type="button" id="code-back" class="linkish">Use a different email</button></p>
       </form>
 
       <p class="auth-switch">New here? <a href="signup.html">Create an account</a></p>
@@ -74,6 +84,7 @@
           const tab = btn.dataset.tab;
           document.getElementById('form-password').hidden = tab !== 'password';
           document.getElementById('form-magic').hidden = tab !== 'magic';
+          document.getElementById('form-code').hidden = true;
         });
       });
 
@@ -100,20 +111,59 @@
         }
       });
 
+      let codeEmail = '';
+      function showCodeStep(email) {
+        codeEmail = email;
+        document.getElementById('form-magic').hidden = true;
+        document.getElementById('form-code').hidden = false;
+        document.getElementById('code-sent').textContent = 'We emailed a code to ' + email + '. It can take a minute. Check spam too.';
+        document.querySelector('#form-code [name=code]').focus();
+      }
+      function cooldown(btn, secs) {
+        btn.disabled = true; let n = secs; const label = btn.dataset.label || (btn.dataset.label = btn.textContent);
+        const t = setInterval(() => { n--; if (n <= 0) { clearInterval(t); btn.disabled = false; btn.textContent = label; } else btn.textContent = label + ' (' + n + 's)'; }, 1000);
+        btn.textContent = label + ' (' + n + 's)';
+      }
+
       document.getElementById('form-magic').addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
         const btn = e.target.querySelector('button[type=submit]');
         btn.disabled = true;
         try {
-          const { error } = await MWAuth.signInMagic(fd.get('email'));
+          const email = String(fd.get('email')).trim();
+          const { error } = await MWAuth.sendLoginCode(email);
           if (error) throw error;
-          showMsg('msg-magic', 'Check your email for the sign-in link.', true);
+          showCodeStep(email);
+          cooldown(document.getElementById('code-resend'), 30);
         } catch (err) {
-          showMsg('msg-magic', err.message || 'Could not send link', false);
+          const m = /signups not allowed|not found|otp/i.test(err.message || '') ? 'We couldn’t find an account with that email. Create an account first.' : (err.message || 'Could not send the code');
+          showMsg('msg-magic', m, false);
         } finally {
           btn.disabled = false;
         }
+      });
+
+      document.getElementById('form-code').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector('button[type=submit]');
+        btn.disabled = true;
+        try {
+          const { error } = await MWAuth.verifyLoginCode(codeEmail, new FormData(e.target).get('code'));
+          if (error) throw error;
+          location.href = next;
+        } catch (err) {
+          showMsg('msg-code', /expired|invalid/i.test(err.message || '') ? 'That code is wrong or has expired. Check it, or send a new one.' : (err.message || 'Could not verify the code'), false);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+      document.getElementById('code-resend').addEventListener('click', async (e) => {
+        try { const { error } = await MWAuth.sendLoginCode(codeEmail); if (error) throw error; showMsg('msg-code', 'New code sent.', true); cooldown(e.target, 30); }
+        catch (err) { showMsg('msg-code', err.message || 'Could not send a new code', false); }
+      });
+      document.getElementById('code-back').addEventListener('click', () => {
+        document.getElementById('form-code').hidden = true; document.getElementById('form-magic').hidden = false;
       });
 
       MWAuth.getUser().then((u) => {

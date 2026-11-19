@@ -69,6 +69,7 @@
     const [bx, by] = vp.convertToViewportPoint(r[2], r[3]);
     return [ax, ay, bx, by];
   }
+  const isPhone = () => !!(global.matchMedia && global.matchMedia('(max-width: 760px), (pointer: coarse) and (max-height: 520px)').matches);
   const uid = () => 'i' + Math.random().toString(36).slice(2, 9);
   function debounce(fn, ms) { let t; const d = (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; d.flush = (...a) => { clearTimeout(t); fn(...a); }; return d; }
 
@@ -388,6 +389,7 @@
         ${editable ? `<aside class="dv-profile" hidden><div class="dv-profile-head"><strong>Quick-fill from your company profile</strong><button type="button" class="dv-btn dv-ico" data-act="profile-toggle" aria-label="Close">×</button></div><p class="dv-profile-help">Tap a field on the page, then tap a value to fill it in. Or tap a value, then tap anywhere on the page to drop it there.</p><div class="dv-chips"></div></aside>` : ''}
         <div class="dv-scroll"><div class="dv-pages"><p class="dv-loading">Loading document…</p></div></div>
       </div>
+      <div class="dv-fab" role="group" aria-label="Zoom"><button type="button" data-act="zoom-out" aria-label="Zoom out">&minus;</button><button type="button" data-act="zoom-fit" aria-label="Fit page to screen">Fit</button><button type="button" data-act="zoom-in" aria-label="Zoom in">+</button></div>
       <div class="dv-email" hidden>
         <form class="dv-email-card" novalidate>
           <h3>Email this document</h3>
@@ -426,7 +428,7 @@
     // --- action buttons (top right)
     const btnDownload = document.createElement('button');
     btnDownload.type = 'button'; btnDownload.className = 'dv-btn'; btnDownload.dataset.act = 'download';
-    btnDownload.textContent = editable ? 'Download PDF' : 'Download';
+    btnDownload.innerHTML = editable ? '<span class="dv-l">Download PDF</span><span class="dv-s">Download</span>' : 'Download';
     btnDownload.disabled = true;
     actionsEl.appendChild(btnDownload);
     if (!editable && o.sourceUrl) {
@@ -437,7 +439,7 @@
     let btnEmail = null;
     if (editable) {
       btnEmail = document.createElement('button');
-      btnEmail.type = 'button'; btnEmail.className = 'dv-btn dv-primary'; btnEmail.dataset.act = 'email'; btnEmail.textContent = 'Email document'; btnEmail.disabled = true;
+      btnEmail.type = 'button'; btnEmail.className = 'dv-btn dv-primary'; btnEmail.dataset.act = 'email'; btnEmail.innerHTML = '<span class="dv-l">Email document</span><span class="dv-s">Email</span>'; btnEmail.disabled = true;
       actionsEl.appendChild(btnEmail);
     } else if (o.onFill) {
       const b = document.createElement('button');
@@ -674,24 +676,29 @@
           }).observe(wrap);
         }
       }
-      wrap.addEventListener('focusin', () => select(it.id));
+      wrap.addEventListener('focusin', () => { select(it.id); if (isPhone()) setTimeout(() => { try { wrap.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (_) {} }, 320); });
       wrap.addEventListener('pointerdown', () => select(it.id));
       wrap._it = it; wrap._place = place;
 
       // drag by handle
-      handle.addEventListener('pointerdown', (e) => {
+      const startDrag = (e) => {
         e.preventDefault(); e.stopPropagation();
         select(it.id);
+        let moved = false;
         const sx = e.clientX, sy = e.clientY, ox = it.x, oy = it.y;
         const p = state.pages[it.page - 1];
         const move = (ev) => {
+          if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 3) moved = true;
           it.x = Math.max(0, Math.min(p.w - it.w, ox + (ev.clientX - sx) / state.scale));
           it.y = Math.max(0, Math.min(p.h - it.h, oy + (ev.clientY - sy) / state.scale));
           place();
         };
-        const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); touch(); };
-        addEventListener('pointermove', move); addEventListener('pointerup', up);
-      });
+        const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up); if (moved) touch(); };
+        addEventListener('pointermove', move); addEventListener('pointerup', up); addEventListener('pointercancel', up);
+      };
+      handle.addEventListener('pointerdown', startDrag);
+      // ticks, stamps and signatures have no text to edit, so the whole thing can be dragged (easier with a finger)
+      if (it.type !== 'text') wrap.addEventListener('pointerdown', (e) => { if (!e.target.closest('.dv-x, .dv-handle')) startDrag(e); });
       return wrap;
     }
 
@@ -765,8 +772,21 @@
         return;
       }
       if (e.target.closest('.dv-item, .dv-w')) return;
+      if (typeof pinch !== 'undefined' && pinch) return;
+      if (e.pointerType === 'touch') {
+        // a finger: place on release, and only if it was a tap (not a scroll or pinch)
+        const sx = e.clientX, sy = e.clientY;
+        const clean = () => { p.el.removeEventListener('pointerup', up); p.el.removeEventListener('pointercancel', clean); };
+        const up = (ev) => { clean(); if (state.tool && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 12) placeAt(p, ev.clientX, ev.clientY); };
+        p.el.addEventListener('pointerup', up); p.el.addEventListener('pointercancel', clean);
+        return;
+      }
+      placeAt(p, e.clientX, e.clientY);
+      e.preventDefault();
+    }
+    function placeAt(p, cx, cy) {
       const r = p.el.getBoundingClientRect();
-      const x = (e.clientX - r.left) / state.scale, y = (e.clientY - r.top) / state.scale;
+      const x = (cx - r.left) / state.scale, y = (cy - r.top) / state.scale;
       const t = state.tool;
       if (t === 'stamp' || (typeof t === 'object' && t.stamp)) {
         const spec = (typeof t === 'object' && t.stamp) || state.stampSpec;
@@ -781,7 +801,6 @@
       else if (t === 'date') addItem('text', p, x, y - 8, todayText());
       else if (t === 'text') addItem('text', p, x, y - 8);
       else if (typeof t === 'object' && t.value != null) addItem('text', p, x, y - 8, t.value);
-      e.preventDefault();
       setTool(null);
     }
 
@@ -1209,6 +1228,7 @@
       switch (t.dataset.act) {
         case 'zoom-in': state.zoom = Math.min(3, state.zoom + 0.25); relayout(); break;
         case 'zoom-out': state.zoom = Math.max(0.5, state.zoom - 0.25); relayout(); break;
+        case 'zoom-fit': state.zoom = 1; relayout(); scrollEl.scrollLeft = 0; break;
         case 'download': doDownload(t); break;
         case 'fill': if (o.onFill) o.onFill(t); break;
         case 'email': saveNow().then(openEmail); break;
@@ -1250,6 +1270,73 @@
     const onResize = () => { clearTimeout(rzT); rzT = setTimeout(() => { if (state.pdf && Math.abs(fitScale() - state.scale) > 0.01) relayout(); }, 200); };
     global.addEventListener('resize', onResize);
 
+    // ------------------------------------------------------------ phones: pinch to zoom, double-tap, steady toolbar
+    let pinch = null, tapStart = null, lastTap = null;
+    const tdist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    function zoomAt(cx, cy, target) {
+      // change the zoom but keep the spot under the fingers where it is
+      const sr = scrollEl.getBoundingClientRect();
+      const p0x = scrollEl.scrollLeft + cx - sr.left, p0y = scrollEl.scrollTop + cy - sr.top;
+      const r = target / state.zoom;
+      state.zoom = target; layoutPages();
+      scrollEl.scrollLeft = p0x * r - (cx - sr.left); scrollEl.scrollTop = p0y * r - (cy - sr.top);
+    }
+    scrollEl.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2 && state.pdf) {
+        const t = e.touches, pr = pagesEl.getBoundingClientRect();
+        const cx = (t[0].clientX + t[1].clientX) / 2, cy = (t[0].clientY + t[1].clientY) / 2;
+        pinch = { d0: tdist(t), z0: state.zoom, cx, cy, scale: 1 };
+        pagesEl.style.transformOrigin = (cx - pr.left) + 'px ' + (cy - pr.top) + 'px';
+        pagesEl.style.willChange = 'transform';
+        tapStart = null;
+      } else if (e.touches.length === 1) tapStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }, { passive: true });
+    scrollEl.addEventListener('touchmove', (e) => {
+      if (!pinch || e.touches.length !== 2) return;
+      if (e.cancelable) e.preventDefault();
+      const z = Math.max(0.5, Math.min(4, pinch.z0 * tdist(e.touches) / pinch.d0));
+      pinch.scale = z / pinch.z0;
+      pagesEl.style.transform = 'scale(' + pinch.scale + ')';
+    }, { passive: false });
+    const endTouch = (e) => {
+      if (pinch) {
+        if (e.touches.length >= 2) return;
+        const pz = pinch; pinch = null;
+        pagesEl.style.transform = ''; pagesEl.style.transformOrigin = ''; pagesEl.style.willChange = '';
+        if (Math.abs(pz.scale - 1) >= 0.03) {
+          // pz.z0 is what the layout is at; zoomAt works from state.zoom, which is unchanged
+          zoomAt(pz.cx, pz.cy, Math.max(0.5, Math.min(4, pz.z0 * pz.scale)));
+        }
+        return;
+      }
+      // double-tap on empty page: zoom in, or back to fit
+      if (e.type !== 'touchend' || e.touches.length || e.changedTouches.length !== 1 || state.tool || !tapStart) return;
+      const t = e.changedTouches[0];
+      if (Math.hypot(t.clientX - tapStart.x, t.clientY - tapStart.y) > 10) { lastTap = null; return; }
+      if (e.target.closest && e.target.closest('.dv-item, .dv-w, button, a, textarea, input, select')) { lastTap = null; return; }
+      const now = Date.now();
+      if (lastTap && now - lastTap.t < 320 && Math.hypot(t.clientX - lastTap.x, t.clientY - lastTap.y) < 40) {
+        lastTap = null; zoomAt(t.clientX, t.clientY, state.zoom > 1.3 ? 1 : 2.2);
+      } else lastTap = { t: now, x: t.clientX, y: t.clientY };
+    };
+    scrollEl.addEventListener('touchend', endTouch); scrollEl.addEventListener('touchcancel', endTouch);
+
+    // Phones: no browser zoom (we do our own), and the screen follows the on-screen keyboard and the address bar,
+    // so the toolbar stays exactly where it is.
+    const metaVp = document.querySelector('meta[name=viewport]');
+    const metaOrig = metaVp ? metaVp.getAttribute('content') : null;
+    let vvCleanup = null;
+    if (isPhone()) {
+      if (metaVp) metaVp.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover');
+      const vv = global.visualViewport;
+      if (vv) {
+        const sync = () => { root.style.bottom = 'auto'; root.style.top = vv.offsetTop + 'px'; root.style.height = vv.height + 'px'; };
+        vv.addEventListener('resize', sync); vv.addEventListener('scroll', sync); sync();
+        vvCleanup = () => { vv.removeEventListener('resize', sync); vv.removeEventListener('scroll', sync); };
+      }
+      if (editable && statusEl) { const tt = $('.dv-title'); if (tt) tt.appendChild(statusEl); } // save status sits under the title
+    }
+
     function relayout() {
       const top = scrollEl.scrollTop, h = scrollEl.scrollHeight;
       layoutPages();
@@ -1262,6 +1349,8 @@
       if (editable && state.dirty) { try { await saveNow(); } catch (_) {} }
       document.removeEventListener('keydown', onKey);
       global.removeEventListener('resize', onResize);
+      if (vvCleanup) vvCleanup();
+      if (metaVp && metaOrig != null) metaVp.setAttribute('content', metaOrig);
       if (observer) observer.disconnect();
       try { state.pdf && state.pdf.destroy(); } catch (_) {}
       root.remove();

@@ -80,6 +80,21 @@
     });
   }
 
+  // ---- one-time email codes (no links) ----
+  async function verifySignupCode(email, token) {
+    return getClient().auth.verifyOtp({ email, token: String(token).replace(/\s+/g, ''), type: 'signup' });
+  }
+  async function resendSignupCode(email) {
+    return getClient().auth.resend({ type: 'signup', email });
+  }
+  async function sendLoginCode(email) {
+    // only for people who already have an account; new people use "Create account"
+    return getClient().auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
+  }
+  async function verifyLoginCode(email, token) {
+    return getClient().auth.verifyOtp({ email, token: String(token).replace(/\s+/g, ''), type: 'email' });
+  }
+
   async function signOut() {
     return getClient().auth.signOut();
   }
@@ -115,6 +130,10 @@
     signUp,
     signIn,
     signInMagic,
+    verifySignupCode,
+    resendSignupCode,
+    sendLoginCode,
+    verifyLoginCode,
     signOut,
     requireUser,
     hydrateNav,
