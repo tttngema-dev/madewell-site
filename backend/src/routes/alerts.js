@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { supabase } from '../supabase.js';
 import { getTendersForAlerts } from './tenders.js';
+import { isPro, proUserIds, PRO_REQUIRED } from '../entitlement.js';
 
 export const alertsRouter = Router();
 const MAX_PER_DAY = 10;
@@ -117,6 +118,9 @@ alertsRouter.get('/account/alerts', requireAuth, async (req, res) => {
 alertsRouter.put('/account/alerts', requireAuth, async (req, res) => {
   try {
     const p = cleanPrefs(req.body);
+    if (p.enabled && !(await isPro(req.user.id))) {
+      return res.status(402).json({ ...PRO_REQUIRED, reason: 'alerts', error: 'Tender alert emails are part of Made Well Pro.' });
+    }
     if (p.enabled && !p.categories.length && !p.provinces.length && !p.keywords.length) {
       return res.status(400).json({ ok: false, error: 'Pick at least one category, province or keyword so we know what to send you.' });
     }
@@ -134,6 +138,7 @@ alertsRouter.put('/account/alerts', requireAuth, async (req, res) => {
 const lastTest = new Map();
 alertsRouter.post('/account/alerts/test', requireAuth, async (req, res) => {
   try {
+    if (!(await isPro(req.user.id))) return res.status(402).json({ ...PRO_REQUIRED, reason: 'alerts', error: 'Tender alert emails are part of Made Well Pro.' });
     if (Date.now() - (lastTest.get(req.user.id) || 0) < 60000) return res.status(429).json({ ok: false, error: 'Please wait a minute before sending another test.' });
     const { data } = await supabase.from('tender_alert_prefs').select('*').eq('user_id', req.user.id).maybeSingle();
     if (!data) return res.status(400).json({ ok: false, error: 'Save your preferences first.' });
@@ -172,8 +177,10 @@ async function runDigest(base) {
   const { data: users, error } = await supabase.from('tender_alert_prefs').select('*').eq('enabled', true).limit(2000);
   if (error) throw error;
   let sent = 0, skipped = 0, failed = 0;
+  const pro = await proUserIds(); // alert emails are a Pro feature; free users keep their settings but get no emails
   for (const u of users || []) {
     try {
+      if (!pro.has(u.user_id)) { skipped++; continue; }
       if (u.last_sent_on === today || !u.email) { skipped++; continue; }                // one digest per day
       const since = sastDate(new Date(Date.now() - 200 * 864e5));
       const { data: prev } = await supabase.from('tender_alert_sent').select('ocid, sent_on').eq('user_id', u.user_id).gte('sent_on', since);

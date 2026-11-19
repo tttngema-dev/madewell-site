@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { supabase } from './supabase.js';
 import { sendRegistrationEmail, sendReceiptEmail, sendBoEmail, sendBoReceipt } from './email.js';
 import { push } from './notify.js';
+import { PRICE_TEXT } from './entitlement.js';
 
 export const FEE_BO = '500.00'; // Beneficial ownership filing price (ZAR)
 export const FEE = '580.00'; // Company registration price (ZAR). Set here, never taken from the browser.
@@ -42,6 +43,93 @@ export function buildPayment(reg, o = {}) {
   return { url: `https://${HOST}/eng/process`, fields: { ...Object.fromEntries(pairs), signature: sign(pairs, true) } };
 }
 
+
+// ---------------------------------------------------------------------------
+// Made Well Pro: a monthly PayFast subscription (R199 / month, runs until the customer cancels)
+// ---------------------------------------------------------------------------
+const sastToday = () => new Date(Date.now() + 2 * 3600e3).toISOString().slice(0, 10); // South Africa = UTC+2, no DST
+
+export function buildSubscription(user) {
+  const ref = `SUB-${String(user.id).replace(/-/g, '').slice(0, 12)}-${Date.now().toString(36)}`;
+  const front = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+  // Field ORDER matters for the signature: PayFast's documented order, subscription fields last.
+  const pairs = [
+    ['merchant_id', process.env.PAYFAST_MERCHANT_ID],
+    ['merchant_key', process.env.PAYFAST_MERCHANT_KEY],
+    ['return_url', `${front}/dashboard.html?subscribed=1`],
+    ['cancel_url', `${front}/dashboard.html?subscribe=cancelled`],
+    ['notify_url', `${process.env.BACKEND_URL}/api/payfast/itn`],
+    ['email_address', user.email],
+    ['m_payment_id', ref],
+    ['amount', PRICE_TEXT],
+    ['item_name', 'Made Well Pro (monthly)'],
+    ['item_description', 'Made Well Pro: unlimited tender documents and daily tender alerts'],
+    ['custom_str1', user.id],
+    ['subscription_type', '1'],
+    ['billing_date', sastToday()],
+    ['recurring_amount', PRICE_TEXT],
+    ['frequency', '3'], // 3 = monthly
+    ['cycles', '0'],    // 0 = until cancelled
+  ].filter(([, v]) => String(v ?? '').trim() !== '');
+  console.log('PayFast subscription created:', ref, '| sandbox =', HOST.startsWith('sandbox'));
+  return { url: `https://${HOST}/eng/process`, fields: { ...Object.fromEntries(pairs), signature: sign(pairs, true) } };
+}
+
+/** Stops future monthly charges. Returns true on success. (PayFast API v1) */
+export async function cancelPayfastSubscription(token) {
+  const headers = { 'merchant-id': process.env.PAYFAST_MERCHANT_ID, version: 'v1', timestamp: new Date().toISOString().slice(0, 19) };
+  const all = { ...headers };
+  if (process.env.PAYFAST_PASSPHRASE) all.passphrase = process.env.PAYFAST_PASSPHRASE;
+  const str = Object.keys(all).sort().map((k) => `${k}=${enc(all[k])}`).join('&');
+  const signature = crypto.createHash('md5').update(str).digest('hex');
+  const sandbox = HOST.startsWith('sandbox') ? '?testing=true' : '';
+  const r = await fetch(`https://api.payfast.co.za/subscriptions/${encodeURIComponent(token)}/cancel${sandbox}`, { method: 'PUT', headers: { ...headers, signature } });
+  const text = await r.text();
+  if (!r.ok) console.error('PayFast cancel failed:', r.status, text.slice(0, 300));
+  return r.ok;
+}
+
+// A subscription payment (first one or each monthly one) or a cancellation notice
+async function handleSubscriptionItn(body, pairs) {
+  // Ask PayFast to confirm it really sent this
+  const check = await fetch(`https://${HOST}/eng/query/validate`, {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: paramString(pairs, false),
+  });
+  if ((await check.text()).trim() !== 'VALID') return console.warn('Subscription ITN rejected: PayFast did not confirm');
+
+  // Who is it? The first payment carries our user id; later monthly ones are matched by PayFast's subscription token.
+  let userId = /^[0-9a-f-]{36}$/i.test(body.custom_str1 || '') ? body.custom_str1 : null;
+  let { data: row } = userId
+    ? await supabase.from('subscriptions').select('*').eq('user_id', userId).maybeSingle()
+    : body.token ? await supabase.from('subscriptions').select('*').eq('payfast_token', body.token).maybeSingle() : { data: null };
+  if (!userId && row) userId = row.user_id;
+  if (!userId) return console.warn('Subscription ITN rejected: cannot tell which user', body.m_payment_id);
+
+  if (body.payment_status === 'CANCELLED') {
+    await supabase.from('subscriptions').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('user_id', userId).eq('source', 'payfast');
+    console.log('Subscription cancelled (access stays until the paid month ends):', userId);
+    return;
+  }
+  if (body.payment_status !== 'COMPLETE') return console.log('Subscription ITN status:', body.payment_status, userId);
+  if (Math.abs(parseFloat(body.amount_gross) - parseFloat(PRICE_TEXT)) > 0.01) return console.warn('Subscription ITN rejected: wrong amount', body.amount_gross);
+  if (row && row.last_pf_payment_id && row.last_pf_payment_id === body.pf_payment_id) return console.log('Subscription ITN already processed', body.pf_payment_id);
+
+  // One more month on top of whatever is still left
+  const now = Date.now();
+  const left = row && row.current_period_end ? new Date(row.current_period_end).getTime() : 0;
+  const end = new Date(Math.max(now, left) + 31 * 864e5).toISOString();
+  const { data: authUser } = await supabase.auth.admin.getUserById(userId).catch(() => ({ data: null }));
+  const { error } = await supabase.from('subscriptions').upsert({
+    user_id: userId, source: 'payfast', status: 'active', plan: 'pro', current_period_end: end,
+    payfast_token: body.token || (row && row.payfast_token) || null, last_pf_payment_id: body.pf_payment_id || null,
+    last_paid_at: new Date().toISOString(), email: authUser?.user?.email || (row && row.email) || body.email_address || null,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'user_id' });
+  if (error) return console.error('Subscription ITN: could not save. Supabase said:', error.message);
+  console.log('Subscription payment accepted:', userId, 'Pro until', end);
+  try { await push(row ? 'Pro renewed' : 'New Pro subscriber', `R${PRICE_TEXT} received from ${authUser?.user?.email || userId}.`); } catch (e) { /* ignore */ }
+}
+
 export const payfastRouter = Router();
 
 // Open this address in a browser to check the route is deployed and reachable
@@ -56,6 +144,14 @@ payfastRouter.post('/payfast/itn', express.urlencoded({ extended: false }), asyn
     const pairs = Object.entries(body).filter(([k]) => k !== 'signature');
 
     if (sign(pairs, false) !== body.signature) return console.warn('ITN rejected: bad signature');
+
+    // Made Well Pro subscription payments (m_payment_id starts with SUB-, or PayFast's monthly notices carrying our token)
+    let isSub = String(body.m_payment_id || '').startsWith('SUB-');
+    if (!isSub && body.token) {
+      const { data: known } = await supabase.from('subscriptions').select('user_id').eq('payfast_token', body.token).maybeSingle();
+      isSub = !!known;
+    }
+    if (isSub) return await handleSubscriptionItn(body, pairs);
 
     const isBo = String(body.m_payment_id || '').startsWith('BO-'), table = isBo ? 'bo_filings' : 'company_registrations';
     const { data: reg } = await supabase.from(table).select('*').eq('reference', body.m_payment_id).maybeSingle();

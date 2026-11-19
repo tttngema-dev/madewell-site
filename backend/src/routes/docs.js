@@ -5,6 +5,7 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { supabase } from '../supabase.js';
 import { fetchDocument, isAllowedUrl, looksLikePdf } from '../docProxy.js';
+import { checkDocAccess, PRO_REQUIRED } from '../entitlement.js';
 
 const router = Router();
 
@@ -81,6 +82,9 @@ router.put('/account/doc-edits', requireAuth, async (req, res) => {
     if (JSON.stringify(state).length > MAX_STATE_BYTES) {
       return res.status(413).json({ ok: false, error: 'Too much content to save' });
     }
+    // Free plan: one document. Anything beyond it is Pro.
+    const access = await checkDocAccess(req.user.id, ocid, doc_url);
+    if (!access.allowed) return res.status(402).json({ ...PRO_REQUIRED, reason: 'doc', error: 'Your free document is used up. Go Pro to fill in more.' });
     const row = {
       user_id: req.user.id,
       ocid: String(ocid),
@@ -132,6 +136,8 @@ router.post('/account/docs/email', requireAuth, async (req, res) => {
     if (!emailLimit(req.user.id)) return res.status(429).json({ ok: false, error: 'You have sent a lot of emails in the last hour. Please try again later.' });
 
     const b = req.body || {};
+    const access = await checkDocAccess(req.user.id, b.ocid, b.doc_url);
+    if (!access.allowed || (!access.pro && !b.ocid)) return res.status(402).json({ ...PRO_REQUIRED, reason: 'doc', error: 'Emailing documents is part of Made Well Pro.' });
     const to = parseRecipients(b.to);
     if (!to.length) return res.status(400).json({ ok: false, error: 'Enter an email address to send to.' });
     if (to.length > 5) return res.status(400).json({ ok: false, error: 'You can send to at most 5 addresses at a time.' });
