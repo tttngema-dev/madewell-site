@@ -2,7 +2,8 @@
 <html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Privacy policy — Made Well</title><link rel="icon" href="logo.png" />
 <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css" /><!-- Meta Pixel Code -->
+<link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="site.css" /><!-- Meta Pixel Code -->
 <script>
 !function(f,b,e,v,n,t,s)
 {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
@@ -20,9 +21,23 @@ src="https://www.facebook.com/tr?id=1691870438976651&ev=PageView&noscript=1"
 /></noscript>
 <!-- End Meta Pixel Code -->
 <script src="track.js"></script>
+  <script src="site.js" defer></script>
 </head>
 <body>
-<header class="top"><a class="brand" href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" width="57" height="84" /></a><nav><a class="btn small" href="register.html">Register now</a></nav></header>
+<header class="top">
+    <a class="brand" href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" width="57" height="84" /></a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Open menu">&#9776;</button>
+    <nav id="site-nav" class="site-nav" aria-label="Main">
+      <a href="tenders.html">Tenders</a>
+      <a href="pricing.html">Pricing</a>
+      <a href="services.html">Business Services</a>
+      <a href="#" data-soon>Business Tools <span class="soon-tag">Soon</span></a>
+      <a href="about.html">About</a>
+      <a href="login.html" class="nav-signin" data-auth="guest">Sign in</a>
+      <a class="btn small" href="signup.html" data-auth="guest">Get started free</a>
+      <a class="btn small" href="dashboard.html" data-auth="user" hidden>Dashboard</a>
+    </nav>
+  </header>
 <main class="legal">
 <h1>Privacy policy</h1><p class="soft">Last updated: 29 October 2026</p>
 <p>Made Well Media (“Made Well”, “we”) helps people register companies with the CIPC. This policy explains what personal information we collect and how we look after it, in line with the Protection of Personal Information Act (POPIA).</p>
@@ -45,6 +60,31 @@ src="https://www.facebook.com/tr?id=1691870438976651&ev=PageView&noscript=1"
 <h2>Your rights</h2>
 <p>You can ask what information we hold about you, ask us to correct or delete it, or object to how we use it. Contact us on WhatsApp: <a href="https://wa.me/27672581319?text=Hi%20Made%20Well%2C%20I%20have%20a%20question%20about%20registering%20my%20company.">067 258 1319</a>. If you’re unhappy with our response you may complain to the Information Regulator (inforegulator.org.za).</p>
 </main>
-<footer><p><a href="privacy.html">Privacy policy</a> &middot; <a href="terms.html">Terms &amp; refunds</a> &middot; <a href="https://wa.me/27672581319?text=Hi%20Made%20Well%2C%20I%20have%20a%20question%20about%20registering%20my%20company." target="_blank" rel="noopener">WhatsApp 067 258 1319</a></p><p>© Made Well Media</p></footer>
+<footer class="site-footer">
+  <div class="sf-wrap">
+    <div class="sf-brand">
+      <a href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" /></a>
+      <p>Helping South African businesses find, prepare and win tenders.</p>
+    </div>
+    <nav aria-label="Made Well"><h4>Made Well</h4><ul>
+      <li><a href="about.html">About Made Well</a></li>
+      <li><a href="contact.html">Contact</a></li>
+    </ul></nav>
+    <nav aria-label="Tenders"><h4>Tenders</h4><ul>
+      <li><a href="tenders.html">Tenders</a></li>
+      <li><a href="pricing.html">Pricing</a></li>
+    </ul></nav>
+    <nav aria-label="Services and tools"><h4>For your business</h4><ul>
+      <li><a href="services.html">Business Services</a></li>
+      <li><a href="#" data-soon>Business Tools <span class="soon-tag">Soon</span></a></li>
+    </ul></nav>
+    <nav aria-label="Legal"><h4>Legal</h4><ul>
+      <li><a href="privacy.html">Privacy Policy</a></li>
+      <li><a href="terms.html">Terms and Conditions</a></li>
+      <li><a href="popia.html">POPIA Information</a></li>
+    </ul></nav>
+  </div>
+  <div class="sf-bar"><p>&copy; Made Well Media</p><p><a href="https://wa.me/27672581319?text=Hi%20Made%20Well%2C%20I%20have%20a%20question." target="_blank" rel="noopener">WhatsApp 067 258 1319</a></p></div>
+</footer>
 <a class="wa-float" href="https://wa.me/27672581319?text=Hi%20Made%20Well%2C%20I%20have%20a%20question%20about%20registering%20my%20company." target="_blank" rel="noopener" aria-label="Chat to us on WhatsApp">WhatsApp us</a>
 </body></html>

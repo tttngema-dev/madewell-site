@@ -2,7 +2,8 @@
 <html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Finish your registration — Made Well</title><link rel="icon" href="logo.png" />
 <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css" /><!-- Meta Pixel Code -->
+<link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="site.css" /><!-- Meta Pixel Code -->
 <script>
 !function(f,b,e,v,n,t,s)
 {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
@@ -20,9 +21,23 @@ src="https://www.facebook.com/tr?id=1691870438976651&ev=PageView&noscript=1"
 /></noscript>
 <!-- End Meta Pixel Code -->
 <script src="track.js"></script>
+  <script src="site.js" defer></script>
 </head>
 <body>
-<header class="top"><a class="brand" href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" width="57" height="84" /></a></header>
+<header class="top">
+    <a class="brand" href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" width="57" height="84" /></a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Open menu">&#9776;</button>
+    <nav id="site-nav" class="site-nav" aria-label="Main">
+      <a href="tenders.html">Tenders</a>
+      <a href="pricing.html">Pricing</a>
+      <a href="services.html">Business Services</a>
+      <a href="#" data-soon>Business Tools <span class="soon-tag">Soon</span></a>
+      <a href="about.html">About</a>
+      <a href="login.html" class="nav-signin" data-auth="guest">Sign in</a>
+      <a class="btn small" href="signup.html" data-auth="guest">Get started free</a>
+      <a class="btn small" href="dashboard.html" data-auth="user" hidden>Dashboard</a>
+    </nav>
+  </header>
 <div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
 <main class="reg"><section class="confirm"><h2>Welcome back</h2>
 <p>Your details are saved and waiting. Pay the fixed R580 fee securely through PayFast to finish your registration. Reference: <code id="ref"></code></p>
@@ -44,6 +59,31 @@ document.getElementById("retry").addEventListener("click", async () => {
     goToPayfast(out.payfast);
   } catch (e) { hideLoader(); err.textContent = "We couldn’t open your payment: " + e.message; err.hidden = false; }
 });
-</script><footer><p><a href="privacy.html">Privacy policy</a> &middot; <a href="terms.html">Terms &amp; refunds</a> &middot; <a href="https://wa.me/27672581319?text=Hi%20Made%20Well%2C%20I%20have%20a%20question%20about%20registering%20my%20company." target="_blank" rel="noopener">WhatsApp 067 258 1319</a></p><p>© Made Well Media</p></footer>
+</script><footer class="site-footer">
+  <div class="sf-wrap">
+    <div class="sf-brand">
+      <a href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" /></a>
+      <p>Helping South African businesses find, prepare and win tenders.</p>
+    </div>
+    <nav aria-label="Made Well"><h4>Made Well</h4><ul>
+      <li><a href="about.html">About Made Well</a></li>
+      <li><a href="contact.html">Contact</a></li>
+    </ul></nav>
+    <nav aria-label="Tenders"><h4>Tenders</h4><ul>
+      <li><a href="tenders.html">Tenders</a></li>
+      <li><a href="pricing.html">Pricing</a></li>
+    </ul></nav>
+    <nav aria-label="Services and tools"><h4>For your business</h4><ul>
+      <li><a href="services.html">Business Services</a></li>
+      <li><a href="#" data-soon>Business Tools <span class="soon-tag">Soon</span></a></li>
+    </ul></nav>
+    <nav aria-label="Legal"><h4>Legal</h4><ul>
+      <li><a href="privacy.html">Privacy Policy</a></li>
+      <li><a href="terms.html">Terms and Conditions</a></li>
+      <li><a href="popia.html">POPIA Information</a></li>
+    </ul></nav>
+  </div>
+  <div class="sf-bar"><p>&copy; Made Well Media</p><p><a href="https://wa.me/27672581319?text=Hi%20Made%20Well%2C%20I%20have%20a%20question." target="_blank" rel="noopener">WhatsApp 067 258 1319</a></p></div>
+</footer>
 <a class="wa-float" href="https://wa.me/27672581319?text=Hi%20Made%20Well%2C%20I%20have%20a%20question%20about%20registering%20my%20company." target="_blank" rel="noopener" aria-label="Chat to us on WhatsApp">WhatsApp us</a>
 </body></html>

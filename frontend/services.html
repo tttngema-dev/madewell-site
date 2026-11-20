@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Business Services — Made Well</title>
+  <meta name="description" content="Register your private company (Pty) Ltd with CIPC for a fixed R580, or file your beneficial ownership for a fixed R500. Business tools coming soon." />
+  <link rel="icon" href="logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="site.css" />
+  <script src="track.js"></script>
+  <script src="site.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" width="57" height="84" /></a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Open menu">&#9776;</button>
+    <nav id="site-nav" class="site-nav" aria-label="Main">
+      <a href="tenders.html">Tenders</a>
+      <a href="pricing.html">Pricing</a>
+      <a href="services.html">Business Services</a>
+      <a href="#" data-soon>Business Tools <span class="soon-tag">Soon</span></a>
+      <a href="about.html">About</a>
+      <a href="login.html" class="nav-signin" data-auth="guest">Sign in</a>
+      <a class="btn small" href="signup.html" data-auth="guest">Get started free</a>
+      <a class="btn small" href="dashboard.html" data-auth="user" hidden>Dashboard</a>
+    </nav>
+  </header>
+  <div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
+
+  <main>
+    <section class="page-hero page">
+      <p class="eyebrow">Business services</p>
+      <h1>Company paperwork, done for you.</h1>
+      <p class="lead">Fixed prices, paid once. Tell us your details and we handle the filing.</p>
+    </section>
+
+    <section class="sec" style="padding-top:1.5rem">
+      <div class="svc-grid">
+        <article class="svc-card"><h3>Register a company</h3><p>We register your private company (Pty) Ltd with CIPC and email you the documents.</p><p class="svc-price">R580 <span class="fine">fixed price</span></p><a class="btn small" href="register.html">Register my company</a></article>
+        <article class="svc-card"><h3>Beneficial ownership</h3><p>Every company has to tell CIPC who really owns it. We prepare your three documents and file them for you.</p><p class="svc-price">R500 <span class="fine">fixed fee</span></p><a class="btn small" href="beneficial-ownership.html">File my beneficial ownership</a></article>
+        <article class="svc-card soon"><h3>Business Tools <span class="soon-tag">Coming soon</span></h3><p>Invoices, quotations and more, for running your business day to day.</p><a class="btn small ghost-link" href="#" data-soon>Coming soon</a></article>
+      </div>
+      <p style="margin-top:1.5rem" class="hero-note">Looking for tenders? <a class="mini-link" href="tenders.html">Browse open tenders</a> or see <a class="mini-link" href="pricing.html">Pricing</a>.</p>
+    </section>
+
+    <section class="sec alt" id="registration">
+      <div class="sec-head"><p class="eyebrow">Company registration &middot; R580</p><h2>How registration works</h2></div>
+      <ol class="steps4">
+        <li><h3>Tell us your details</h3><p>Company name, directors, owners and addresses. It takes about ten minutes.</p></li>
+        <li><h3>Pay securely</h3><p>Pay the R580 fee online through PayFast.</p></li>
+        <li><h3>We register you</h3><p>We reserve your name and submit everything to CIPC for you.</p></li>
+        <li><h3>Receive your documents</h3><p>Your registration documents arrive in your inbox.</p></li>
+      </ol>
+      <div class="cta-row wrap" style="margin-top:2rem"><a class="btn" href="register.html">Register my company</a><span class="price-tag"><b>R580</b> fixed price</span></div>
+    </section>
+
+    <section class="need" id="need">
+      <h2>What you&rsquo;ll need</h2>
+      <p class="sub">Have these ready and the form takes minutes.</p>
+      <ul class="need-grid">
+        <li><h3>Company names</h3><p>Up to four choices, in order of preference.</p></li>
+        <li><h3>Director details</h3><p>Full name, ID or passport number, home address, email and mobile.</p></li>
+        <li><h3>Ownership split</h3><p>Who owns the company, and what percentage each person holds.</p></li>
+        <li><h3>Business addresses</h3><p>Registered office, postal address, and a company email and phone.</p></li>
+        <li><h3>Certified ID copies</h3><p>After you pay, we’ll email you to collect these for each director.</p></li>
+      </ul>
+    </section>
+
+    <section class="sec alt" id="beneficial">
+      <div class="sec-head"><p class="eyebrow">Beneficial ownership &middot; R500</p><h2>Tell CIPC who owns your company</h2><p>Answer a few simple questions about your company and its owners. We prepare your three documents and file them for you.</p></div>
+      <div class="cta-row wrap"><a class="btn" href="beneficial-ownership.html">File my beneficial ownership</a><span class="price-tag"><b>R500</b> fixed fee</span></div>
+    </section>
+
+    <section id="faq" class="faq">
+      <h2>Questions, answered</h2>
+      <details><summary>How long does registration take?</summary><p>Registration takes up to 3 business days. We’ll email you as soon as your documents are ready.</p></details>
+      <details><summary>What does R580 cover?</summary><p>It’s our fixed price to prepare and submit your private company registration. We’ll confirm exactly what’s included in your confirmation email.</p></details>
+      <details><summary>Can I register without a name?</summary><p>Yes. Tick the option on the first step and we’ll register your company with a number. You can choose a name later.</p></details>
+      <details><summary>Is my personal information safe?</summary><p>We only collect what CIPC needs to register your company. Your details are stored securely and used only for this registration.</p></details>
+      <details><summary>What happens after I pay?</summary><p>We email you to collect certified copies of each director’s ID. Once we have them, we submit your registration to CIPC.</p></details>
+    </section>
+  </main>
+
+  <div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
+<footer class="site-footer">
+  <div class="sf-wrap">
+    <div class="sf-brand">
+      <a href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" /></a>
+      <p>Helping South African businesses find, prepare and win tenders.</p>
+    </div>
+    <nav aria-label="Made Well"><h4>Made Well</h4><ul>
+      <li><a href="about.html">About Made Well</a></li>
+      <li><a href="contact.html">Contact</a></li>
+    </ul></nav>
+    <nav aria-label="Tenders"><h4>Tenders</h4><ul>
+      <li><a href="tenders.html">Tenders</a></li>
+      <li><a href="pricing.html">Pricing</a></li>
+    </ul></nav>
+    <nav aria-label="Services and tools"><h4>For your business</h4><ul>
+      <li><a href="services.html">Business Services</a></li>
+      <li><a href="#" data-soon>Business Tools <span class="soon-tag">Soon</span></a></li>
+    </ul></nav>
+    <nav aria-label="Legal"><h4>Legal</h4><ul>
+      <li><a href="privacy.html">Privacy Policy</a></li>
+      <li><a href="terms.html">Terms and Conditions</a></li>
+      <li><a href="popia.html">POPIA Information</a></li>
+    </ul></nav>
+  </div>
+  <div class="sf-bar"><p>&copy; Made Well Media</p><p><a href="https://wa.me/27672581319?text=Hi%20Made%20Well%2C%20I%20have%20a%20question." target="_blank" rel="noopener">WhatsApp 067 258 1319</a></p></div>
+</footer>
+<a class="wa-float" href="https://wa.me/27672581319?text=Hi%20Made%20Well%2C%20I%20have%20a%20question." target="_blank" rel="noopener" aria-label="Chat to us on WhatsApp">WhatsApp us</a>
+
+</body>
+</html>

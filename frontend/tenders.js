@@ -215,7 +215,7 @@
     if (!docs.length) {
       return '<p class="fine">No documents are attached to this tender in the data feed. Check the official portal — the bid pack may be published there.</p>';
     }
-    return '<p class="fine docs-hint">Tap a document to preview it here. You can download it from the preview.</p>' +
+    return '<p class="fine docs-hint"><span class="tag-free" style="margin:0 .3rem 0 0">Free</span> Preview and download any document here. <span class="tag-pro" style="margin:0 .3rem 0 .2rem">Pro</span> Filling one in? Your first document is free, then <a href="pricing.html">Pro</a> unlocks unlimited fill-in, stamp, signature and email.</p>' +
       '<ul class="docs">' + docs.map((d, i) => {
         const meta = [d.format, d.datePublished ? formatDay(d.datePublished) : ''].filter(Boolean).map(esc).join(' · ');
         const inner = '<strong>' + esc(d.title) + '</strong><span class="doc-meta">' + meta + '</span>';
@@ -389,6 +389,8 @@
   state.category = $('#category').value;
   state.province = $('#province').value;
   state.sort = $('#sort').value;
+  const urlQ = new URLSearchParams(location.search).get('q'); // from the homepage search box
+  if (urlQ && urlQ.trim()) { state.q = urlQ.trim().slice(0, 120); $('#q').value = state.q; }
   if (window.MWAuth) MWAuth.hydrateNav();
   load();
   // links in alert emails open one tender directly: tenders.html?ocid=...

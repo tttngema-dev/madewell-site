@@ -281,10 +281,7 @@ input[type=number],input[type=date]{font:inherit;color:var(--ink);background:var
   }
   .svc-bar a.on{background:var(--gold);color:#0b1730;border-color:var(--gold)}
   .svc-bar a[hidden]{display:none!important}
-  /* Keep key tenders links visible on small screens (not only hide-m desktop links) */
-  .top nav a[href="tenders.html"],
-  .top nav a[href="dashboard.html"],
-  .top nav a[aria-current="page"]{display:inline!important;font-size:.9rem}
+  /* (old per-page link overrides removed: the shared menu in site.css now handles small screens) */
 }
 @media (min-width:821px){
   .tenders-bar{display:none}

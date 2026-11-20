@@ -9,24 +9,28 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="site.css" />
   <link rel="stylesheet" href="dashboard.css" />
   <link rel="stylesheet" href="docviewer.css" />
   <link rel="stylesheet" href="billing.css" />
   <script src="track.js"></script>
+  <script src="site.js" defer></script>
 </head>
 <body>
   <header class="top">
     <a class="brand" href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" width="57" height="84" /></a>
-    <nav>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Open menu">&#9776;</button>
+    <nav id="site-nav" class="site-nav" aria-label="Main">
       <a href="tenders.html">Tenders</a>
+      <a href="pricing.html">Pricing</a>
+      <a href="services.html">Business Services</a>
+      <a href="#" data-soon>Business Tools <span class="soon-tag">Soon</span></a>
+      <a href="about.html">About</a>
       <a href="#" class="btn small pro-btn" data-pro-nav hidden></a>
       <span class="nav-email hide-m" data-auth-email></span>
       <button type="button" class="btn small ghost-btn" id="btn-signout">Sign out</button>
     </nav>
   </header>
-  <nav class="svc-bar tenders-bar" aria-label="Tenders navigation">
-    <a href="tenders.html">Browse tenders</a>
-  </nav>
   <div class="bulbs" aria-hidden="true"><i class="a"></i><i class="b"></i></div>
 
   <main class="dash-main">
@@ -217,9 +221,32 @@
     </div>
   </main>
 
-  <footer class="site-foot">
-    <p><a href="index.html">Made Well</a> · <a href="tenders.html">Tenders</a> · <a href="privacy.html">Privacy</a></p>
-  </footer>
+  <footer class="site-footer">
+  <div class="sf-wrap">
+    <div class="sf-brand">
+      <a href="index.html" aria-label="Made Well home"><img src="logo.png" alt="Made Well" /></a>
+      <p>Helping South African businesses find, prepare and win tenders.</p>
+    </div>
+    <nav aria-label="Made Well"><h4>Made Well</h4><ul>
+      <li><a href="about.html">About Made Well</a></li>
+      <li><a href="contact.html">Contact</a></li>
+    </ul></nav>
+    <nav aria-label="Tenders"><h4>Tenders</h4><ul>
+      <li><a href="tenders.html">Tenders</a></li>
+      <li><a href="pricing.html">Pricing</a></li>
+    </ul></nav>
+    <nav aria-label="Services and tools"><h4>For your business</h4><ul>
+      <li><a href="services.html">Business Services</a></li>
+      <li><a href="#" data-soon>Business Tools <span class="soon-tag">Soon</span></a></li>
+    </ul></nav>
+    <nav aria-label="Legal"><h4>Legal</h4><ul>
+      <li><a href="privacy.html">Privacy Policy</a></li>
+      <li><a href="terms.html">Terms and Conditions</a></li>
+      <li><a href="popia.html">POPIA Information</a></li>
+    </ul></nav>
+  </div>
+  <div class="sf-bar"><p>&copy; Made Well Media</p><p><a href="https://wa.me/27672581319?text=Hi%20Made%20Well%2C%20I%20have%20a%20question." target="_blank" rel="noopener">WhatsApp 067 258 1319</a></p></div>
+</footer>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
