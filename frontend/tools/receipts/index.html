@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>MadeWell Receipts</title><meta name="robots" content="noindex" />
+<link rel="manifest" href="manifest.webmanifest" /><meta name="theme-color" content="#0b1730" />
+<link rel="apple-touch-icon" href="icon-180.png" /><meta name="apple-mobile-web-app-capable" content="yes" /><meta name="mobile-web-app-capable" content="yes" /><meta name="apple-mobile-web-app-title" content="MW Receipts" />
+<style>
+:root{--n:#0b1730;--n2:#14264a;--ln:#2b3d63;--p:#f6f1e6;--s:#b9c3da;--g:#f5a623;--in:#f6f1e6;--it:#0b1730;--inb:transparent}
+[data-theme=light]{--n:#f7f5ef;--n2:#ffffff;--ln:#dcd7c8;--p:#14213d;--s:#5b6785;--g:#c98a0a;--in:#ffffff;--it:#14213d;--inb:#cfc9b6}
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+body{background:var(--n);color:var(--p);font:16px/1.45 -apple-system,"Segoe UI",Roboto,Arial,sans-serif;padding-bottom:calc(88px + env(safe-area-inset-bottom))}
+header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:6px;padding:calc(10px + env(safe-area-inset-top)) 14px 10px;background:var(--n);border-bottom:1px solid var(--ln)}
+h1{flex:1;font-size:1.35rem;font-weight:700}h3{margin-bottom:10px;font-size:1.15rem}
+main{max-width:640px;margin:0 auto;padding:14px 16px;display:grid;gap:12px}
+button{font:inherit;color:var(--p);background:var(--n2);border:1px solid var(--ln);border-radius:10px;padding:.55rem .95rem;cursor:pointer}
+button.gold{background:var(--g);border-color:var(--g);color:#0b1730;font-weight:700}button.big{width:100%;padding:1rem;font-size:1.05rem}button.danger{color:#ff9d9d}
+button.ic{background:none;border:0;padding:.3rem .5rem;font-size:1.8rem;line-height:1}
+svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+nav{position:fixed;bottom:0;left:0;right:0;display:grid;grid-template-columns:repeat(4,1fr);background:var(--n2);border-top:1px solid var(--ln);padding-bottom:env(safe-area-inset-bottom);z-index:6}
+nav button{background:none;border:0;border-radius:0;display:grid;justify-items:center;gap:2px;padding:.6rem 0;font-size:.78rem;color:var(--s)}nav button.on{color:var(--g)}
+.card,.item,details{background:var(--n2);border:1px solid var(--ln);border-radius:14px;padding:.9rem 1rem}
+details>summary{cursor:pointer;font-weight:600;list-style:none;display:flex;justify-content:space-between}details[open]>summary{margin-bottom:.6rem}
+em{color:var(--s);font-size:.82rem;font-style:normal;margin-left:.5rem;font-weight:400}small,.hint{display:block;color:var(--s);font-size:.85rem}
+label{display:grid;gap:4px;margin:.55rem 0;font-size:.9rem;color:var(--s)}label.chk{display:flex;gap:.6rem;align-items:center}
+input,select,textarea{font:inherit;color:var(--it);background:var(--in);border:1px solid var(--inb);border-radius:10px;padding:.7rem .8rem;width:100%}input[type=checkbox]{width:auto}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--g)}
+.row,.line{display:flex;justify-content:space-between;align-items:center;gap:.8rem}.line{padding:.6rem 0;border-top:1px solid var(--ln);margin-top:.5rem}
+.qty{display:flex;align-items:center;gap:.6rem}.qty button{padding:.2rem .7rem;font-size:1.1rem}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}.chips{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.6rem}.chips button.on{background:var(--g);color:#0b1730;border-color:var(--g)}
+.sum{margin:.7rem 0}.sum div{display:flex;justify-content:space-between;padding:.2rem 0}.sum .t{font-weight:700;font-size:1.2rem;color:var(--g);border-top:1px solid var(--ln);margin-top:.3rem;padding-top:.5rem}
+.item{display:flex;justify-content:space-between;align-items:center;cursor:pointer;margin-bottom:.5rem}.search{margin-bottom:.8rem}
+.empty{color:var(--s);padding:.8rem 0}.fab{position:fixed;right:20px;bottom:calc(100px + env(safe-area-inset-bottom));width:58px;height:58px;border-radius:50%;font-size:2rem;background:var(--g);color:#0b1730;border:0;z-index:4}
+#modal{position:fixed;inset:0;background:rgba(3,8,20,.75);display:none;align-items:flex-end;justify-content:center;z-index:20}
+#modal.on{display:flex}.sheet{background:var(--n2);width:100%;max-width:640px;max-height:90vh;overflow:auto;border-radius:20px 20px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom))}
+.btns{display:flex;gap:.6rem;margin-top:.9rem}.btns button{flex:1}.prev{width:100%;border-radius:8px;background:#fff;margin-bottom:.4rem}
+.logo{max-width:160px;max-height:90px;display:block;margin:.4rem 0;background:#fff;border-radius:8px;padding:6px}.doc{white-space:pre-wrap;color:var(--s);font-size:.92rem}
+
+/* list view */
+.card{background:none;border:0;padding:0}.item{background:none;border:0;border-bottom:1px solid var(--ln);border-radius:0;padding:.95rem 2px;margin:0}
+.grp{border-top:1px solid var(--ln);margin-bottom:.4rem}
+.li{border-bottom:1px solid var(--ln)}details.li{background:none;border:0;border-bottom:1px solid var(--ln);border-radius:0;padding:0}
+.li>summary,.lr,.inl,.lrow{display:flex;align-items:center;gap:.8rem}.li>summary,.lr{padding:.95rem 2px;cursor:pointer}.li>summary::-webkit-details-marker{display:none}.li[open]>summary{margin-bottom:0}
+.inl{padding:.55rem 2px}.lrow{padding:.95rem 2px .6rem}.lr:active,.li>summary:active{background:rgba(255,255,255,.03)}
+.ico{color:var(--g);display:grid;flex:none}.lb{flex:1;font-weight:600;min-width:0}.lb small{font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chev{color:var(--s);display:grid;transition:transform .15s}.chev svg{width:18px;height:18px}details[open]>summary .chev{transform:rotate(90deg)}
+.bd{padding:0 2px 1rem 34px}.line{border-top:0;border-bottom:1px solid var(--ln);margin-top:0;padding:.7rem 2px .7rem 34px}
+.sm{width:104px;text-align:right;padding:.5rem .6rem}select.sm{width:112px;text-align:left}.sum{padding:.8rem 2px}
+.sw{display:flex;gap:.8rem;flex-wrap:wrap;padding:0 2px 1.1rem 34px}.sw button{width:34px;height:34px;border-radius:50%;padding:0;border:2px solid transparent}.sw button.on{border-color:#fff;box-shadow:0 0 0 3px var(--n),0 0 0 5px var(--g)}
+.btn{display:block;text-align:center;padding:.6rem 1rem;border:1px solid var(--ln);border-radius:10px;background:var(--n2);color:var(--p);font-size:1rem;cursor:pointer;margin:.5rem 0}.logobox{margin-top:.7rem}
+.bdg{display:flex;align-items:center;gap:.5rem;color:var(--g)}.bdg button{padding:.1rem .65rem}.bdg b{font-size:1rem}.item.sel{background:rgba(245,166,35,.14);box-shadow:inset 3px 0 0 var(--g);padding-left:.8rem}
+.pd{margin-top:.8rem}.pd button{width:100%;padding:.9rem;font-size:1.02rem}.lpw{padding:0 2px 1.1rem 34px}.lprev{width:100%;border-radius:8px;background:#fff;min-height:140px;display:block;cursor:zoom-in;box-shadow:0 1px 8px rgba(0,0,0,.25)}
+.sw.pv{padding:0 0 1rem}.sticky{position:sticky;bottom:calc(-18px - env(safe-area-inset-bottom));margin:.4rem -18px calc(-18px - env(safe-area-inset-bottom));padding:.7rem 18px calc(18px + env(safe-area-inset-bottom));background:var(--n2);border-top:1px solid var(--ln)}.sticky .btns{margin-top:0}
+</style></head>
+<body><div id="app"></div><div id="modal"><div class="sheet" id="sheet"></div></div>
+<script>
+const $=s=>document.querySelector(s),K='mwr1',today=()=>new Date().toISOString().slice(0,10);
+let D;try{D=JSON.parse(localStorage.getItem(K))}catch(e){}
+D=Object.assign({biz:{},bank:{},cus:[],pro:[],rec:[],inv:[],n:{r:1,i:1}},D||{});
+const save=()=>{try{localStorage.setItem(K,JSON.stringify(D))}catch(e){alert('Phone storage is full. Delete old documents or use a smaller logo.')}};
+const uid=()=>Math.random().toString(36).slice(2,9);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const CUR={ZAR:'R',NGN:'₦',USD:'$',GBP:'£',EUR:'€',KES:'KSh',GHS:'GH₵'};
+const money=(n,c)=>(CUR[c]||'')+' '+(+n||0).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtD=d=>d?new Date(d+'T00:00').toLocaleDateString('en-ZA',{day:'numeric',month:'long',year:'numeric'}):'';
+const pre=t=>(t=='r'?'R-':'INV-')+String(D.n[t]).padStart(4,'0');
+const newDoc=t=>({cus:null,ship:'',items:[],disc:0,discT:'amt',tax:0,pay:t=='r'?'Cash':['Bank transfer'],cur:D.cur||'ZAR',color:D.col||'#c98a0a',num:'',date:today(),due:'',paid:true,note:''});
+const applyTheme=()=>{document.documentElement.dataset.theme=D.theme||'dark';const m=document.querySelector('meta[name=theme-color]');if(m)m.content=D.theme=='light'?'#f7f5ef':'#0b1730'};applyTheme();
+let T='r',O=null,F={r:newDoc('r'),i:newDoc('i')},Q={cus:'',pro:''},PK='',after=null,cur=null;
+const IC={r:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',i:'<path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4M10 12h6M10 16h6"/>',c:'<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>',p:'<path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',m:'<path d="M4 7h16M4 12h16M4 17h16"/>',biz:'<path d="M5 21V4h14v17M3 21h18M9 8h2M13 8h2M9 12h2M13 12h2M10 21v-4h4v4"/>',ship:'<path d="M2 6h11v10H2zM13 9h5l3 3v4h-8"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',tag:'<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1"/>',pct:'<path d="M19 5L5 19"/><circle cx="7" cy="7" r="2"/><circle cx="17" cy="17" r="2"/>',card:'<rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M2.5 10h19"/>',sl:'<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',pal:'<path d="M12 3a9 9 0 100 18c1.5 0 2-1 1.5-2.2-.5-1.2.3-2.3 1.6-2.3H17a4 4 0 004-4c0-5-4-9.5-9-9.5z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10.5" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/>',ch:'<path d="M9 6l6 6-6 6"/>',lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>',dl:'<path d="M12 3v12M7 10l5 5 5-5M4 20h16"/>',nt:'<path d="M5 4h14v16H5zM9 9h6M9 13h6"/>',ck:'<path d="M5 12l5 5 9-10"/>',sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5"/>'};
+const ic=k=>`<svg viewBox="0 0 24 24">${IC[k]}</svg>`;
+const OT={menu:'Options',biz:'Business details',bank:'Bank account details',rec:'Saved receipts',inv:'Saved invoices',look:'Appearance',terms:'Terms and conditions',priv:'Privacy policy',data:'Back up your data'};
+function tot(d){const sub=d.items.reduce((a,x)=>a+x.p*x.q,0),dis=d.discT=='pct'?sub*d.disc/100:+d.disc||0,base=Math.max(0,sub-dis),tx=base*d.tax/100;return{sub,dis,tx,total:base+tx}}
+const totHTML=d=>{const m=tot(d);return `<div><span>Subtotal</span><span>${money(m.sub,d.cur)}</span></div>${m.dis?`<div><span>Discount</span><span>- ${money(m.dis,d.cur)}</span></div>`:''}${m.tx?`<div><span>Tax (${d.tax}%)</span><span>${money(m.tx,d.cur)}</span></div>`:''}<div class="t"><span>Total</span><span>${money(m.total,d.cur)}</span></div>`};
+const discSub=d=>d.disc?(d.discT=='pct'?d.disc+'%':money(d.disc,d.cur))+' off':'None';
+let PVt=null,pvSeq=0;
+const snapFor=t=>{const s=JSON.parse(JSON.stringify(F[t]));s.type=t;s.num=s.num.trim()||pre(t);s.biz={...D.biz};s.bank={...D.bank};s.tot=tot(s);return s};
+async function repaint(){const t=PVt,n=++pvSeq;if(!t)return;const c=await draw(snapFor(t));const im=$('#pvi');if(im&&PVt==t&&n==pvSeq)im.src=c.toDataURL('image/jpeg',.88)}
+async function prevStep(t){const d=F[t],L=t=='r'?'receipt':'invoice';PVt=t;
+modal(`<h3>Preview your ${L}</h3><p style="color:var(--s);font-size:.9rem;margin-bottom:.7rem">Pick a colour and watch it change. Nothing is saved until you tap Generate.</p><div class="sw pv">${SWC.map(c=>`<button data-a="pcol" data-v="${c}" style="background:${c}" class="${d.color==c?'on':''}" aria-label="Colour ${c}"></button>`).join('')}</div><img id="pvi" class="prev" alt="Preview"><div class="sticky"><div class="btns"><button data-a="close">Back to edit</button><button class="gold" data-a="final">Generate ${L}</button></div></div>`);
+await repaint()}
+const logoBox=()=>{const l=D.biz.logo;return `<div class="logobox"><b>Logo</b>${l?`<img class="logo" src="${l}" alt="Logo"><div class="btns"><label class="btn">Change logo<input type="file" id="lg" accept="image/*" hidden></label><button data-a="nologo">Remove</button></div>`:`<small>Shown at the top of your receipts and invoices. Optional.</small><label class="btn">Upload your logo<input type="file" id="lg" accept="image/*" hidden></label>`}</div>`};
+const li=(n,icon,title,sub,opt,body)=>`<details class="li" data-n="${n}"><summary><span class="ico">${ic(icon)}</span><span class="lb">${title}${sub?`<small>${esc(sub)}</small>`:''}</span>${opt?'<em>optional</em>':''}<span class="chev">${ic('ch')}</span></summary><div class="bd">${body}</div></details>`;
+const lr=(a,icon,title,sub,opt)=>`<div class="li lr" data-a="${a}"><span class="ico">${ic(icon)}</span><span class="lb">${title}${sub?`<small>${esc(sub)}</small>`:''}</span>${opt?'<em>optional</em>':''}<span class="chev">${ic('ch')}</span></div>`;
+const SWC=['#c98a0a','#1d4ed8','#15803d','#0f766e','#6d28d9','#b91c1c','#1f2937'];
+function form(t){const d=F[t],b=D.biz,bk=D.bank,r=t=='r',L=r?'Receipt':'Invoice';
+const fld=(k,l,v)=>`<label>${l}<input data-b="${k}" value="${esc(v)}"></label>`,bkf=(k,l)=>`<label>${l}<input data-bk="${k}" value="${esc(bk[k])}"></label>`;
+const bankOn=!r&&d.pay.includes('Bank transfer'),payS=(r?[d.pay]:d.pay).join(', ')||'None selected';
+return `<div class="grp">`+
+li('biz','biz','Business details',b.name||'Required: add your business name',0,fld('name','Business name',b.name)+fld('address','Address',b.address)+fld('phone','Phone',b.phone)+fld('email','Email',b.email)+logoBox()+'<small>Saved for all your documents.</small>')+
+lr('pickC','c','Customer',d.cus?d.cus.name:'None selected',1)+
+li('ship','ship','Shipping details','',1,`<textarea data-f="ship" rows="3" placeholder="Delivery address or notes">${esc(d.ship)}</textarea>`)+
+lr('pickP','p','Add products',d.items.length?`${d.items.length} added`:'Tap to choose from your products')+
+d.items.map((x,i)=>`<div class="line"><div><b>${esc(x.n)}</b><small>${money(x.p,d.cur)} each</small></div><div class="qty"><button data-a="q" data-i="${i}" data-d="-1">−</button><span>${x.q}</span><button data-a="q" data-i="${i}" data-d="1">+</button></div></div>`).join('')+
+li('disc','tag','Discount',discSub(d),0,`<div class="two"><label>Discount<input data-f="disc" type="number" inputmode="decimal" value="${d.disc||''}" placeholder="0"></label><label>Type<select data-f="discT"><option value="amt" ${d.discT=='amt'?'selected':''}>Amount</option><option value="pct" ${d.discT=='pct'?'selected':''}>Percent</option></select></label></div>`)+
+`<div class="li inl"><span class="ico">${ic('pct')}</span><span class="lb">Tax (%)</span><input class="sm" data-f="tax" type="number" inputmode="decimal" value="${d.tax||''}" placeholder="0"></div>`+
+`<div class="sum" id="tot">${totHTML(d)}</div>`+
+li('pay','card',r?'Payment method':'Payment details',payS,0,`<div class="chips">${['Cash','POS','Bank transfer'].map(m=>`<button data-a="pay" data-v="${m}" class="${(r?d.pay==m:d.pay.includes(m))?'on':''}">${m}</button>`).join('')}</div>`+(r?'':bankOn?bkf('bank','Bank name')+bkf('name','Account name')+bkf('no','Account number')+bkf('branch','Branch code (optional)')+bkf('type','Account type (optional)')+'<small>Edit your account here. It is saved for next time.</small>':'<small style="margin-top:.6rem">Choose Bank transfer to show and edit your account details.</small>'))+
+
+li('opt','sl','Optional fields','Currency, number, date, comment',0,`<label>Currency<select data-f="cur">${Object.keys(CUR).map(c=>`<option ${d.cur==c?'selected':''}>${c}</option>`).join('')}</select></label>
+<label>${L} number<input data-f="num" value="${esc(d.num)}" placeholder="${pre(t)}"></label>
+<label>${L} date<input type="date" data-f="date" value="${d.date}"></label>
+${r?`<label class="chk"><input type="checkbox" data-f="paid" ${d.paid?'checked':''}> Show a paid stamp</label>`:`<label>Payment due<input type="date" data-f="due" value="${d.due}"></label>`}
+<label>Additional comment<textarea data-f="note" rows="3">${esc(d.note)}</textarea></label>`)+
+`</div><button class="gold big" data-a="gen">Generate ${L.toLowerCase()}</button>`}
+function rows(k){const q=Q[k].toLowerCase();return D[k].filter(x=>!q||(x.name+(x.phone||'')).toLowerCase().includes(q)).map(x=>`<div class="item" data-a="${k=='cus'||k=='pro'?'edit':'pick'}" data-k="${k}" data-id="${x.id}"><div><b>${esc(x.name)}</b><small>${k=='pro'?money(x.price,D.cur||'ZAR'):esc(x.phone||x.email||'')}</small></div><span>›</span></div>`).join('')||`<p class="empty">${k=='cus'?'No customers yet. Tap + to add your first customer.':'No products yet. Tap + to add your first product.'}</p>`}
+const listPage=k=>`<input id="q" class="search" data-k="${k}" placeholder="Search ${k=='cus'?'customers':'products'}" value="${esc(Q[k])}"><div id="list">${rows(k)}</div><button class="fab" data-a="add" data-k="${k}" aria-label="Add">+</button>`;
+const TERMS=n=>`1. Payment. Goods and services are paid for in full as agreed on the invoice or receipt, by the due date shown.\n\n2. Ownership. Goods remain the property of ${n||'the seller'} until they are paid for in full.\n\n3. Returns. Goods may be returned within 7 days if unused and in original condition, with proof of purchase. Services already delivered are not refundable.\n\n4. Delivery. Delivery dates are estimates and may change.\n\n5. Liability. ${n||'The seller'} is not liable for indirect or consequential loss, to the extent the law allows.\n\n6. Disputes. Please contact us first so we can try to resolve any problem quickly.`;
+const PRIV=n=>`${n||'We'} collect your name and contact details so we can provide goods and services, issue receipts and invoices, and contact you about your order.\n\nWe keep this information only as long as we need it for these purposes or as the law requires. We do not sell your information. We share it only with people who help us serve you (for example payment or delivery providers) or when the law requires.\n\nYou may ask to see, correct or delete your information at any time by contacting us. We take reasonable steps to keep it secure.`;
+function optPage(){const b=D.biz,k=D.bank,fl=(a,att,l,v)=>`<label>${l}<input ${att}="${a}" value="${esc(v)}"></label>`;
+if(O=='menu')return `<div class="grp">`+[['biz','biz','Business details'],['bank','card','Bank account details'],['rec','r','Receipts'],['inv','i','Invoices'],['terms','nt','Terms and conditions'],['priv','lock','Privacy policy'],['look','sun','Appearance'],['data','dl','Back up your data']].map(([v,c,l])=>`<div class="li lr" data-a="go" data-v="${v}"><span class="ico">${ic(c)}</span><span class="lb">${l}</span><span class="chev">${ic('ch')}</span></div>`).join('')+`<a class="li lr" href="../../tools.html" style="color:inherit;text-decoration:none"><span class="ico">${ic('m')}</span><span class="lb">Made Well Business Tools<small>Back to the website</small></span><span class="chev">${ic('ch')}</span></a></div>`;
+if(O=='biz')return `<div class="card">${fl('name','data-b','Business name',b.name)}${fl('address','data-b','Address',b.address)}${fl('phone','data-b','Phone',b.phone)}${fl('email','data-b','Email',b.email)}${fl('reg','data-b','Registration or VAT number (optional)',b.reg)}${logoBox()}</div><small>Changes save automatically.</small>`;
+if(O=='bank')return `<div class="card">${fl('bank','data-bk','Bank name',k.bank)}${fl('name','data-bk','Account name',k.name)}${fl('no','data-bk','Account number',k.no)}${fl('branch','data-bk','Branch code (optional)',k.branch)}${fl('type','data-bk','Account type (optional)',k.type)}</div><small>These show on your invoices.</small>`;
+if(O=='rec'||O=='inv')return D[O].map(s=>`<div class="item" data-a="view" data-id="${s.id}"><div><b>${esc(s.num)}</b><small>${esc(s.cus?s.cus.name:'No customer')} · ${money(s.tot.total,s.cur)} · ${fmtD(s.date)}</small></div><button class="danger" data-a="rm" data-id="${s.id}">Delete</button></div>`).join('')||`<p class="empty">Nothing here yet. Documents you generate are saved here.</p>`;
+if(O=='look')return `<div class="chips">${[['dark','Dark'],['light','Light']].map(([v,l])=>`<button data-a="theme" data-v="${v}" class="${(D.theme||'dark')==v?'on':''}">${l}</button>`).join('')}</div><small style="margin-top:.8rem">Saved on this phone.</small>`;
+if(O=='terms')return `<div class="doc">${esc(TERMS(b.name))}</div><small>A general template. Have it checked for your business.</small>`;
+if(O=='priv')return `<div class="doc">${esc(PRIV(b.name))}</div><small>A general template. Have it checked for your business.</small>`;
+return `<div class="card"><p class="doc">Your data is stored on this phone only. Save a backup file now and then, so you can restore it on a new phone.</p><div class="btns"><button data-a="exp" class="gold">Save backup</button></div><label>Restore from a backup file<input type="file" id="imp" accept=".json"></label></div>`}
+function render(){const op=[...document.querySelectorAll('details[open]')].map(e=>e.dataset.n),y=scrollY;
+const ti={r:'Receipts',i:'Invoices',c:'Customers',p:'Products'};
+$('#app').innerHTML=`<header>${O?'<button class="ic" data-a="back" aria-label="Back">‹</button>':''}<h1>${O?OT[O]:ti[T]}</h1>${O?'':`<button class="ic" data-a="opt" aria-label="Options">${ic('m')}</button>`}</header><main>${O?optPage():T=='c'?listPage('cus'):T=='p'?listPage('pro'):form(T)}</main>
+<nav>${[['r','Receipts'],['i','Invoices'],['c','Customers'],['p','Products']].map(([k,l])=>`<button data-a="tab" data-v="${k}" class="${!O&&T==k?'on':''}">${ic(k)}<span>${l}</span></button>`).join('')}</nav>`;
+op.forEach(n=>{const e=document.querySelector(`details[data-n=${n}]`);if(e)e.open=true});scrollTo(0,y)}
+const modal=h=>{$('#sheet').innerHTML=h;$('#modal').classList.add('on')},close=()=>{PVt=null;$('#modal').classList.remove('on')};
+function editor(k,id){const x=D[k].find(z=>z.id==id)||{},c=k=='cus',f=c?[['name','Name'],['phone','Phone'],['email','Email'],['address','Address']]:[['name','Product name'],['price','Selling price per unit']];
+modal(`<h3>${id?'Edit':'Add'} ${c?'customer':'product'}</h3>${f.map(([n,l])=>`<label>${l}<input id="f_${n}" ${n=='price'?'type="number" inputmode="decimal" step="0.01"':''} value="${esc(x[n])}"></label>`).join('')}<div class="btns">${id?`<button class="danger" data-a="del" data-k="${k}" data-id="${id}">Delete</button>`:''}<button class="gold" data-a="savex" data-k="${k}" data-id="${id||''}">${id?'Save changes':'Add '+(c?'customer':'product')}</button></div>`)}
+function pl(){const k=PK,q=($('#pq')?.value||'').toLowerCase(),d=F[T];
+$('#pl').innerHTML=D[k].filter(x=>!q||x.name.toLowerCase().includes(q)).map(x=>{const it=k=='pro'&&d.items.find(z=>z.id==x.id),n=it?it.q:0;
+return `<div class="item${n?' sel':''}" data-a="pick" data-k="${k}" data-id="${x.id}"><div><b>${esc(x.name)}</b><small>${k=='pro'?money(x.price,d.cur):esc(x.phone||x.email||'')}</small></div>${k=='pro'?(n?`<span class="bdg"><button data-a="dec" data-id="${x.id}" aria-label="Remove one">−</button><b>×${n}</b>${ic('ck')}</span>`:'<span>+</span>'):'<span>›</span>'}</div>`}).join('')||`<p class="empty">Nothing saved yet. Add one below.</p>`;
+const n=d.items.reduce((a,z)=>a+z.q,0),pd=$('#pdone');if(pd)pd.innerHTML=k=='pro'&&n?`<button class="gold" data-a="close">Done · ${n} added</button>`:''}
+function pick(k){PK=k;modal(`<h3>${k=='cus'?'Select customer':'Tap a product to add it'}</h3><input id="pq" class="search" placeholder="Search"><div id="pl"></div><div id="pdone" class="pd"></div><div class="btns">${k=='cus'?'<button data-a="none">No customer</button>':'<button data-a="close">Close</button>'}<button class="${k=='cus'?'gold':''}" data-a="new" data-k="${k}">+ New ${k=='cus'?'customer':'product'}</button></div>`);pl()}
+const addItem=(d,p)=>{const f=d.items.find(i=>i.id==p.id);f?f.q++:d.items.push({id:p.id,n:p.name,p:+p.price||0,q:1})};
+async function draw(s){const W=1240,M=80,H0=2800+170*s.items.length+Math.ceil((s.note||'').length/45)*45+Math.ceil((s.ship||'').length/30)*45,c=document.createElement('canvas');c.width=W;c.height=H0;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,W,H0);
+const NV='#0b1730',GD=s.color||'#c98a0a',GR='#5b6785',FN='-apple-system,Segoe UI,Roboto,Arial,sans-serif',r=s.type=='r',b=s.biz,m=s.tot,cu=s.cur;
+const T=(t,px,py,o={})=>{x.font=`${o.w||400} ${o.s||28}px ${FN}`;x.fillStyle=o.c||NV;x.textAlign=o.a||'left';x.fillText(t,px,py)};
+const wrap=(t,px,py,mw,o={})=>{const lh=(o.s||28)*1.45;x.font=`${o.w||400} ${o.s||28}px ${FN}`;String(t||'').split('\n').forEach(p=>{let l='';p.split(' ').forEach(w=>{const n=l?l+' '+w:w;if(x.measureText(n).width>mw&&l){T(l,px,py,o);py+=lh;l=w}else l=n});T(l,px,py,o);py+=lh});return py};
+let ly=M;
+if(b.logo){const im=await new Promise(z=>{const i=new Image();i.onload=()=>z(i);i.onerror=()=>z(null);i.src=b.logo});if(im){const h=Math.min(120,im.height),w=im.width*h/im.height;x.drawImage(im,M,ly,w,h);ly+=h+26}}
+ly+=34;T(b.name||'Your business',M,ly,{w:700,s:38});ly+=46;[b.address,b.phone,b.email,b.reg].filter(Boolean).forEach(l=>{ly=wrap(l,M,ly,520,{s:26,c:GR})});
+T(r?'RECEIPT':'INVOICE',W-M,M+54,{w:800,s:62,c:GD,a:'right'});let ry=M+112;[`No. ${s.num}`,`Date: ${fmtD(s.date)}`,!r&&s.due?`Due: ${fmtD(s.due)}`:''].filter(Boolean).forEach(l=>{T(l,W-M,ry,{s:28,a:'right'});ry+=42});
+let y=Math.max(ly,ry)+20;x.fillStyle=GD;x.fillRect(M,y,W-2*M,4);y+=62;
+if(s.cus||s.ship){let a=y,z=y;if(s.cus){T(r?'Received from':'Bill to',M,a,{s:24,c:GR});a+=40;T(s.cus.name,M,a,{w:700,s:30});a+=40;[s.cus.phone,s.cus.email,s.cus.address].filter(Boolean).forEach(l=>{a=wrap(l,M,a,520,{s:26,c:GR})})}
+if(s.ship){T('Ship to',660,z,{s:24,c:GR});z=wrap(s.ship,660,z+40,500,{s:26})}y=Math.max(a,z)+20}
+x.fillStyle=GD;x.fillRect(M,y,W-2*M,64);const C={q:700,p:930,a:W-M-20};T('Item',M+20,y+42,{w:700,s:26,c:'#fff'});T('Qty',C.q,y+42,{w:700,s:26,c:'#fff',a:'center'});T('Price',C.p,y+42,{w:700,s:26,c:'#fff',a:'right'});T('Amount',C.a,y+42,{w:700,s:26,c:'#fff',a:'right'});y+=64;
+s.items.forEach(i=>{const e=wrap(i.n,M+20,y+44,520,{s:28});T(String(i.q),C.q,y+44,{s:28,a:'center'});T(money(i.p,cu),C.p,y+44,{s:28,a:'right'});T(money(i.p*i.q,cu),C.a,y+44,{s:28,a:'right'});y=Math.max(e,y+44+28)+10;x.fillStyle='#e3e6ee';x.fillRect(M,y-14,W-2*M,2)});
+y+=34;const ty=y;[['Subtotal',money(m.sub,cu)],m.dis?['Discount','- '+money(m.dis,cu)]:0,m.tx?[`Tax (${s.tax}%)`,money(m.tx,cu)]:0].filter(Boolean).forEach(([l,v])=>{T(l,700,y,{s:28,c:GR});T(v,W-M,y,{s:28,a:'right'});y+=48});
+x.fillStyle=GD;x.fillRect(660,y-10,W-M-660,76);T('Total',690,y+40,{w:700,s:34,c:'#fff'});T(money(m.total,cu),W-M-24,y+40,{w:800,s:38,c:'#fff',a:'right'});y+=76;
+if(r&&s.paid){x.save();x.translate(M+250,ty+70);x.rotate(-.22);x.strokeStyle='#1f9d55';x.lineWidth=9;x.strokeRect(-150,-62,300,124);x.font=`800 92px ${FN}`;x.fillStyle='#1f9d55';x.textAlign='center';x.fillText('PAID',0,32);x.restore();y=Math.max(y,ty+150)}
+y+=56;const bk=s.bank,pm=r?[s.pay]:s.pay;
+if(pm.length){T(r?'Payment method':'Payment details',M,y,{w:700,s:28});y+=44;pm.forEach(p=>{if(p=='Bank transfer'&&(bk.bank||bk.no)&&!r){y=wrap(`Bank transfer\n${[bk.bank,bk.name,bk.no&&'Account no: '+bk.no,bk.branch&&'Branch code: '+bk.branch,bk.type].filter(Boolean).join('\n')}`,M,y,W-2*M,{s:27,c:GR})}else y=wrap(p=='POS'?(r?'Paid':'Pay')+' by POS':p=='Cash'?(r?'Paid':'Pay')+' by cash':r&&p=='Bank transfer'?'Paid by bank transfer':p,M,y,W-2*M,{s:27,c:GR})})}
+if(s.note){y+=20;T('Notes',M,y,{w:700,s:28});y=wrap(s.note,M,y+42,W-2*M,{s:27,c:GR})}
+y+=50;T('Thank you for your business',W/2,y,{s:28,c:GR,a:'center'});y+=70;
+const o=document.createElement('canvas');o.width=W;o.height=y;o.getContext('2d').drawImage(c,0,0,W,y,0,0,W,y);return o}
+function pdf(c){const j=atob(c.toDataURL('image/jpeg',.92).split(',')[1]),w=595,h=Math.round(595*c.height/c.width),xr=[];let o='%PDF-1.4\n';
+const ob=(n,b)=>{xr[n]=o.length;o+=`${n} 0 obj\n${b}\nendobj\n`};ob(1,'<</Type/Catalog/Pages 2 0 R>>');ob(2,'<</Type/Pages/Kids[3 0 R]/Count 1>>');ob(3,`<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${w} ${h}]/Contents 4 0 R/Resources<</XObject<</Im 5 0 R>>>>>>`);
+const cs=`q ${w} 0 0 ${h} 0 0 cm /Im Do Q`;ob(4,`<</Length ${cs.length}>>\nstream\n${cs}\nendstream`);
+xr[5]=o.length;o+=`5 0 obj\n<</Type/XObject/Subtype/Image/Width ${c.width}/Height ${c.height}/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter/DCTDecode/Length ${j.length}>>\nstream\n${j}\nendstream\nendobj\n`;
+const x0=o.length;o+='xref\n0 6\n0000000000 65535 f \n'+[1,2,3,4,5].map(n=>String(xr[n]).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<</Size 6/Root 1 0 R>>\nstartxref\n${x0}\n%%EOF`;
+const u=new Uint8Array(o.length);for(let i=0;i<o.length;i++)u[i]=o.charCodeAt(i)&255;return new Blob([u],{type:'application/pdf'})}
+const dl=(b,n)=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=n;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000)};
+async function show(s){modal('<p class="empty">Preparing your document…</p>');const c=await draw(s);cur={c,s};
+modal(`<h3>${s.type=='r'?'Receipt':'Invoice'} ${esc(s.num)}</h3><img class="prev" alt="Preview" src="${c.toDataURL('image/png')}"><div class="btns"><button data-a="png">Download PNG</button><button data-a="pdf">Download PDF</button></div>${navigator.canShare?'<button class="gold big" style="margin-top:.6rem" data-a="share">Share</button>':''}<button class="big" style="margin-top:.6rem" data-a="close">Close</button>`)}
+function gen(t){const d=F[t];if(!(D.biz.name||'').trim()){alert('Please enter your business name first. It appears at the top of your document.');const e=document.querySelector('details[data-n=biz]');if(e){e.open=true;e.scrollIntoView({block:'center'});setTimeout(()=>document.querySelector('[data-b=name]')?.focus(),60)}return}if(!d.items.length)return alert('Add at least one product first.');prevStep(t)}
+function finalize(t){const d=F[t];
+const s=JSON.parse(JSON.stringify(d));s.id=uid();s.type=t;s.num=d.num.trim()||pre(t);s.biz={...D.biz};s.bank={...D.bank};s.tot=tot(d);s.at=Date.now();
+if(!d.num.trim())D.n[t]++;D[t=='r'?'rec':'inv'].unshift(s);D.cur=d.cur;save();F[t]=newDoc(t);render();show(s)}
+document.addEventListener('input',e=>{const t=e.target,d=F[T];
+if(t.dataset.b){D.biz[t.dataset.b]=t.value;save();if(t.dataset.b=='name'){const sm=document.querySelector('details[data-n=biz] .lb small');if(sm)sm.textContent=t.value||'Required: add your business name'}}else if(t.dataset.bk){D.bank[t.dataset.bk]=t.value;save()}
+else if(t.dataset.f){let v=t.type=='checkbox'?t.checked:t.value;if(t.dataset.f=='disc'||t.dataset.f=='tax')v=parseFloat(v)||0;d[t.dataset.f]=v;if($('#tot'))$('#tot').innerHTML=totHTML(d);const ds=document.querySelector('details[data-n=disc] .lb small');if(ds)ds.textContent=discSub(d)}
+else if(t.id=='q'){Q[t.dataset.k]=t.value;$('#list').innerHTML=rows(t.dataset.k)}else if(t.id=='pq')pl()});
+document.addEventListener('change',e=>{const t=e.target,f=t.files&&t.files[0];if(!f)return;
+if(t.id=='lg'){const r=new FileReader();r.onload=()=>{const i=new Image();i.onload=()=>{const k=Math.min(1,360/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=i.width*k;c.height=i.height*k;c.getContext('2d').drawImage(i,0,0,c.width,c.height);D.biz.logo=c.toDataURL('image/png');save();render()};i.src=r.result};r.readAsDataURL(f)}
+if(t.id=='imp'){const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);if(!j.biz||!j.n)throw 0;if(confirm('Replace everything on this phone with the backup?')){D=Object.assign(D,j);save();render()}}catch(x){alert('That file is not a MadeWell Receipts backup.')}};r.readAsText(f)}});
+document.addEventListener('click',e=>{if(e.target.id=='modal')return close();const el=e.target.closest('[data-a]');if(!el)return;const a=el.dataset.a,d=F[T],k=el.dataset.k,id=el.dataset.id,dv=el.dataset;
+const nm=cur&&(cur.s.type=='r'?'Receipt-':'Invoice-')+cur.s.num;
+const A={tab(){T=dv.v;O=null;render()},opt(){O='menu';render()},back(){O=O=='menu'?null:'menu';render()},go(){O=dv.v;render()},add(){after=null;editor(k)},edit(){after=null;editor(k,id)},
+del(){if(confirm('Delete this?')){D[k]=D[k].filter(x=>x.id!=id);save();close();render()}},
+savex(){const g=n=>$('#f_'+n).value.trim();if(!g('name'))return alert('Enter a name first.');const o=k=='cus'?{name:g('name'),phone:g('phone'),email:g('email'),address:g('address')}:{name:g('name'),price:parseFloat(g('price'))||0};
+let x=D[k].find(z=>z.id==id);if(x)Object.assign(x,o);else{x={id:uid(),...o};D[k].push(x);D[k].sort((p,q)=>p.name.localeCompare(q.name))}save();close();if(after){after(x);after=null}render()},
+pickC(){pick('cus')},pickP(){pick('pro')},new(){after=x=>{if(k=='cus')d.cus=x;else addItem(d,x)};editor(k)},
+pick(){const x=D[k].find(z=>z.id==id);if(k=='cus'){d.cus=x;close()}else{addItem(d,x)}render();if(k=='pro')pl()},dec(){const i=d.items.findIndex(z=>z.id==id);if(i>-1){d.items[i].q--;if(d.items[i].q<1)d.items.splice(i,1)}render();pl()},pcol(){d.color=dv.v;D.col=dv.v;save();document.querySelectorAll('.sw.pv button').forEach(b=>b.classList.toggle('on',b==el));repaint()},final(){finalize(PVt)},theme(){D.theme=dv.v;save();applyTheme();render()},none(){d.cus=null;close();render()},
+q(){const i=+dv.i,it=d.items[i];it.q+=+dv.d;if(it.q<1)d.items.splice(i,1);render()},
+col(){d.color=dv.v;D.col=dv.v;save();render()},pay(){if(T=='r')d.pay=dv.v;else{const i=d.pay.indexOf(dv.v);i<0?d.pay.push(dv.v):d.pay.splice(i,1)}render()},gen(){gen(T)},close,
+view(){const s=D[O].find(z=>z.id==id);show(s)},rm(){if(confirm('Delete this saved document?')){D[O]=D[O].filter(z=>z.id!=id);save();render()}},
+nologo(){delete D.biz.logo;save();render()},
+png(){cur.c.toBlob(b=>dl(b,nm+'.png'))},pdf(){dl(pdf(cur.c),nm+'.pdf')},
+share(){cur.c.toBlob(b=>{const f=new File([b],nm+'.png',{type:'image/png'});navigator.canShare({files:[f]})?navigator.share({files:[f],title:nm}).catch(()=>{}):alert('Sharing is not available here. Use Download instead.')})},
+exp(){dl(new Blob([JSON.stringify(D)],{type:'application/json'}),'madewell-receipts-backup.json')}};
+A[a]&&(a=='pick'&&el.closest('#pl')?A.pick():a=='pick'?A.pick():A[a]())});
+render();if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script></body></html>
