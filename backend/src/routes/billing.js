@@ -6,7 +6,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { supabase } from '../supabase.js';
 import { adminRouter } from './admin.js';
 import { buildSubscription, cancelPayfastSubscription } from '../payfast.js';
-import { PRICE, getSubscription, getTrialDoc, isProRow, checkDocAccess } from '../entitlement.js';
+import { PRICE, getSubscription, getTrialDoc, isProRow, checkDocAccess, checkDownload, getFreeDownload, PRO_REQUIRED } from '../entitlement.js';
 
 export const billingRouter = Router();
 
@@ -31,8 +31,10 @@ billingRouter.get('/billing/status', requireAuth, async (req, res) => {
     const sub = await getSubscription(req.user.id);
     const pro = isProRow(sub);
     const trial = await getTrialDoc(req.user.id);
+    const dl = pro ? null : await getFreeDownload(req.user.id);
     const out = {
       ok: true, price: PRICE, pro, subscription: publicSub(sub),
+      download: { used: !!dl },
       trial: { used: !!trial, doc: trial ? { ocid: trial.ocid, doc_url: trial.doc_url, doc_title: trial.doc_title } : null },
     };
     if (req.query.ocid && req.query.doc_url) {
@@ -42,6 +44,20 @@ billingRouter.get('/billing/status', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('[billing status]', err.message);
     res.status(500).json({ ok: false, error: 'Could not load your plan. Run backend/sql/subscriptions.sql in Supabase.' });
+  }
+});
+
+// POST /api/billing/download  { ocid, doc_url, title }  -> may this person download this tender document?
+billingRouter.post('/billing/download', requireAuth, async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.doc_url) return res.status(400).json({ ok: false, error: 'Missing document.' });
+    const r = await checkDownload(req.user.id, b.ocid, b.doc_url, b.title);
+    if (!r.allowed) return res.status(402).json({ ...PRO_REQUIRED, reason: 'download', error: 'Your free download is used. Go Pro to download more tender documents.' });
+    res.json({ ok: true, allowed: true });
+  } catch (err) {
+    console.error('[billing download]', err.message);
+    res.json({ ok: true, allowed: true }); // never block a download because of our own hiccup
   }
 });
 

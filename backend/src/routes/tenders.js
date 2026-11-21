@@ -591,7 +591,7 @@ router.get('/tenders', async (req, res) => {
     if (!store.byOcid.size) {
       return res.status(502).json({
         ok: false,
-        error: 'Could not load tenders from National Treasury right now. Try again shortly.',
+        error: 'Could not load tenders right now. Try again shortly.',
         ms: Date.now() - started,
       });
     }
@@ -628,7 +628,7 @@ router.get('/tenders', async (req, res) => {
       partial: store.byOcid.size < 50,
       warning:
         store.byOcid.size < 50
-          ? 'Still building the tender cache from National Treasury — refresh in a minute for more results.'
+          ? 'Still building the tender list — refresh in a minute for more results.'
           : undefined,
       provinces: SA_PROVINCES,
       items,
@@ -653,7 +653,7 @@ router.get('/tenders', async (req, res) => {
     }
     res.status(502).json({
       ok: false,
-      error: 'Could not load tenders from National Treasury right now. Try again shortly.',
+      error: 'Could not load tenders right now. Try again shortly.',
       ms: Date.now() - started,
     });
   }

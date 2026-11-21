@@ -55,6 +55,33 @@ export async function checkDocAccess(userId, ocid, docUrl) {
   }
 }
 
+/**
+ * Free plan: ONE tender document download in total (downloading that same document again is fine).
+ * Pro: unlimited. If we can't tell (database hiccup, SQL not run yet) we let it through and log it.
+ */
+export async function checkDownload(userId, ocid, docUrl, title) {
+  try {
+    const sub = await getSubscription(userId);
+    if (isProRow(sub)) return { allowed: true, pro: true };
+    const { data, error } = await supabase.from('free_downloads').select('ocid, doc_url').eq('user_id', userId).maybeSingle();
+    if (error) throw error;
+    if (!data) {
+      const ins = await supabase.from('free_downloads').insert({ user_id: userId, ocid: String(ocid || ''), doc_url: String(docUrl || ''), doc_title: String(title || '').slice(0, 200) || null });
+      if (ins.error && ins.error.code !== '23505') throw ins.error;
+      return { allowed: true, first: true };
+    }
+    return { allowed: data.ocid === String(ocid) && data.doc_url === String(docUrl) };
+  } catch (err) {
+    console.error('[entitlement] download check failed, allowing:', err.message);
+    return { allowed: true, unknown: true };
+  }
+}
+
+export async function getFreeDownload(userId) {
+  try { const { data } = await supabase.from('free_downloads').select('ocid, doc_url, doc_title').eq('user_id', userId).maybeSingle(); return data || null; }
+  catch (_) { return null; }
+}
+
 export async function isPro(userId) {
   try { return isProRow(await getSubscription(userId)); }
   catch (err) { console.error('[entitlement] pro check failed, allowing:', err.message); return true; }
