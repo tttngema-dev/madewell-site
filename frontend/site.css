@@ -42,7 +42,7 @@
 
 /* ---- generic page structure ---- */
 .page { max-width: 1080px; margin: 0 auto; padding: 0 1.5rem; }
-.page-hero { padding: 3.5rem 0 1.5rem; display: grid; gap: .9rem; }
+.page-hero { padding: 3.5rem 1.5rem 1.5rem; display: grid; gap: .9rem; }
 .page-hero .lead { font-size: 1.15rem; color: var(--soft); max-width: 40rem; }
 .sec { max-width: 1080px; margin: 0 auto; padding: 3rem 1.5rem; }
 .sec-head { display: grid; gap: .5rem; margin-bottom: 1.75rem; }
@@ -135,9 +135,25 @@
 @media (max-width: 900px) {
   .home-hero { grid-template-columns: 1fr; padding-top: 2.5rem; gap: 2rem; }
   .trust-strip, .steps-home { grid-template-columns: 1fr 1fr; }
-  .page-hero { padding-top: 2.5rem; }
+  .page-hero { padding-top: 2.5rem; padding-bottom: 1rem; }
 }
 @media (max-width: 520px) { .trust-strip, .steps-home { grid-template-columns: 1fr; } .search-big { flex-direction: column; } .search-big .btn { width: 100%; text-align: center; } }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .breadcrumb { color: var(--soft); font-size: .9rem; }
 .breadcrumb a { color: var(--soft); }
+
+/* ---- Made Well loading screen: shown instead of half-built pages while we move you somewhere ---- */
+html.mw-loading { overflow: hidden; }
+html.mw-loading::after { content: var(--mw-msg, "Loading…"); position: fixed; inset: 0; z-index: 9998; display: flex; align-items: center; justify-content: center; padding-top: 9.5rem; box-sizing: border-box; text-align: center; font: 600 1.05rem var(--sans); color: var(--paper); background: var(--stage) url(logo.png) no-repeat center calc(50% - 2.4rem) / 76px auto; }
+html.mw-loading::before { content: ""; position: fixed; z-index: 9999; left: 50%; top: calc(50% - 2.4rem); width: 124px; height: 124px; margin: -62px 0 0 -62px; border-radius: 50%; border: 2px solid rgba(245, 166, 35, .28); border-top-color: var(--gold); animation: mwSpin 1s linear infinite, mwGlow 1.8s ease-in-out infinite; pointer-events: none; }
+@keyframes mwSpin { to { transform: rotate(360deg); } }
+@keyframes mwGlow { 0%, 100% { box-shadow: 0 0 14px rgba(245, 166, 35, .25); } 50% { box-shadow: 0 0 34px rgba(245, 166, 35, .6); } }
+@media (prefers-reduced-motion: reduce) { html.mw-loading::before { animation: none; border-top-color: rgba(245, 166, 35, .28); } }
+
+/* ---- share menu ---- */
+.mw-share { position: fixed; z-index: 260; width: min(18rem, calc(100vw - 24px)); background: var(--stage-2); border: 1px solid var(--gold); border-radius: 14px; padding: .6rem; box-shadow: 0 18px 44px rgba(0,0,0,.55); display: grid; gap: .25rem; }
+.mw-share-h { margin: .2rem .5rem .35rem; font-weight: 700; font-size: .85rem; letter-spacing: .06em; text-transform: uppercase; color: var(--gold); }
+.mw-share-row { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--paper); font: 600 1rem var(--sans); padding: .8rem .8rem; border-radius: 10px; cursor: pointer; text-decoration: none; }
+.mw-share-row:hover, .mw-share-row:focus-visible { background: rgba(255,255,255,.07); color: var(--bulb); outline: none; }
+.mw-share-url { margin: .3rem .5rem .2rem; color: var(--soft); font-size: .75rem; word-break: break-all; user-select: all; }
+@media (max-width: 640px) { .mw-share { left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); top: auto; width: auto; } }

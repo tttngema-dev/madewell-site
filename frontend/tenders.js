@@ -97,7 +97,7 @@
       renderPager();
     } catch (err) {
       const msg = err.name === 'AbortError'
-        ? 'First load is building a tender cache from National Treasury. Wait a few seconds and tap Try again — later loads are instant.'
+        ? 'The tender list is warming up. Wait a few seconds and tap Try again — later loads are instant.'
         : (err.message || 'Could not load tenders.');
       results.innerHTML = '<p class="error">' + esc(msg) + '</p><p class="fine" style="text-align:center"><button type="button" class="btn small" id="retry-tenders">Try again</button></p>';
       meta.textContent = '';
@@ -215,14 +215,14 @@
     if (!docs.length) {
       return '<p class="fine">No documents are attached to this tender in the data feed. Check the official portal — the bid pack may be published there.</p>';
     }
-    return '<p class="fine docs-hint"><span class="tag-free" style="margin:0 .3rem 0 0">Free</span> Preview and download any document here. <span class="tag-pro" style="margin:0 .3rem 0 .2rem">Pro</span> Filling one in? Your first document is free, then <a href="pricing.html">Pro</a> unlocks unlimited fill-in, stamp, signature and email.</p>' +
+    return '<p class="fine docs-hint"><span class="tag-free" style="margin:0 .3rem 0 0">Free</span> Preview any document here. Your first download is free. <span class="tag-pro" style="margin:0 .3rem 0 .2rem">Pro</span> After that, <a href="pricing.html">Pro</a> unlocks unlimited downloads, fill-in, stamp, signature and email.</p>' +
       '<ul class="docs">' + docs.map((d, i) => {
         const meta = [d.format, d.datePublished ? formatDay(d.datePublished) : ''].filter(Boolean).map(esc).join(' · ');
         const inner = '<strong>' + esc(d.title) + '</strong><span class="doc-meta">' + meta + '</span>';
         return canPreview(d)
           ? '<li class="doc-row"><button type="button" class="doc-open" data-doc="' + i + '">' + inner +
             '<span class="doc-cta">Preview</span></button></li>'
-          : '<li class="doc-row"><a class="doc-open" href="' + esc(d.url) + '" target="_blank" rel="noopener">' + inner +
+          : '<li class="doc-row"><a class="doc-open" data-dl="' + i + '" href="' + esc(d.url) + '" target="_blank" rel="noopener">' + inner +
             '<span class="doc-cta">Download</span></a></li>';
       }).join('') + '</ul>';
   }
@@ -235,7 +235,7 @@
     return MWAuth.api('/api/account/saved', { method: 'POST', body: JSON.stringify(savePayload(t)) });
   }
   // Not signed in yet: remember what they wanted, so after sign-in / registering they land on the dashboard with it done.
-  const goSignIn = (action, t, doc) => { MWAuth.setPending({ type: action, tender: savePayload(t), doc: doc }); location.href = 'login.html?next=dashboard.html'; };
+  const goSignIn = (action, t, doc) => { MWAuth.setPending({ type: action, tender: savePayload(t), doc: doc }); if (window.MWLoader) MWLoader.show('Taking you to sign in…'); location.href = 'login.html?next=dashboard.html'; };
 
   async function openPreview(t, idx) {
     const d = (t.documents || [])[idx];
@@ -250,10 +250,12 @@
         const user = window.MWAuth ? await MWAuth.getUser() : null;
         if (!user) { goSignIn('fill', t, idx); return; }
         btn.disabled = true; btn.textContent = 'Opening…';
+        if (window.MWLoader) MWLoader.show('Opening your document…');
         try {
           await saveTender(t);
           location.href = 'dashboard.html?open=' + encodeURIComponent(t.ocid) + '&doc=' + idx;
         } catch (err) {
+          if (window.MWLoader) MWLoader.hide();
           btn.disabled = false; btn.innerHTML = '<span class="dv-l">Fill in document</span><span class="dv-s">Fill in</span>';
           alert(err.message || 'Could not save this tender.');
         }
@@ -271,11 +273,7 @@
       field('Last updated', esc(formatDate(t.published))) +
       field('Licence', 'Open Data Commons PDDL') +
       '</div>' +
-      '<div class="actions">' +
-      '<a class="btn" href="' + esc(t.sourceUrl || 'https://www.etenders.gov.za/') + '" target="_blank" rel="noopener">Open on eTenders portal</a>' +
-      '<a class="btn ghost" href="https://data.etenders.gov.za/" target="_blank" rel="noopener">About the data</a>' +
-      '</div>' +
-      '<p class="fine" style="margin-top:1.25rem">Always download the official pack and confirm the closing time on the National Treasury portal before you prepare a bid.</p>'
+      '<p class="fine" style="margin-top:1.25rem">Always confirm the closing time and the official bid pack before you prepare a bid.</p>'
     );
   }
 
@@ -291,6 +289,13 @@
     panel.innerHTML = tab === 'documents' ? renderDocsTab(t) : tab === 'source' ? renderSourceTab(t) : renderDetailsTab(t);
     if (tab === 'documents') {
       panel.querySelectorAll('button.doc-open').forEach((b) => b.addEventListener('click', () => openPreview(t, +b.dataset.doc)));
+      panel.querySelectorAll('a.doc-open[data-dl]').forEach((a) => a.addEventListener('click', async (e) => {
+        if (!window.MWBilling) return;
+        e.preventDefault();
+        const d = (t.documents || [])[+a.dataset.dl];
+        if (!d || !(await MWBilling.allowDownload(t.ocid, d.url, d.title))) return; // free plan: one download
+        const go = document.createElement('a'); go.href = d.url; go.target = '_blank'; go.rel = 'noopener'; document.body.appendChild(go); go.click(); go.remove();
+      }));
     }
   }
 
@@ -311,6 +316,8 @@
     body.querySelectorAll('.tab').forEach((el) => el.addEventListener('click', () => renderTab(t, el.dataset.tab)));
     renderTab(t, 'details'); // Details is always the default tab
 
+    const shareBtn = $('#detail-share');
+    if (shareBtn) shareBtn.onclick = () => window.MWShare && MWShare.tender(t, shareBtn);
     $('#detail').hidden = false;
     $('#detail-backdrop').hidden = false;
     document.body.style.overflow = 'hidden';
@@ -389,6 +396,8 @@
   state.category = $('#category').value;
   state.province = $('#province').value;
   state.sort = $('#sort').value;
+  const fToggle = $('#filters-toggle'), fRow = $('#filters-row');
+  if (fToggle) fToggle.addEventListener('click', () => { const on = fRow.classList.toggle('open'); fToggle.setAttribute('aria-expanded', String(on)); });
   const urlQ = new URLSearchParams(location.search).get('q'); // from the homepage search box
   if (urlQ && urlQ.trim()) { state.q = urlQ.trim().slice(0, 120); $('#q').value = state.q; }
   if (window.MWAuth) MWAuth.hydrateNav();

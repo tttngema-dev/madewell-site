@@ -248,3 +248,10 @@
 @keyframes justSaved { 0%, 100% { box-shadow: 0 0 0 0 rgba(245, 166, 35, 0); } 30% { box-shadow: 0 0 0 4px rgba(245, 166, 35, 0.8); } }
 .just-saved { animation: justSaved 2s ease 2; }
 @media (max-width: 560px) { .al-result { margin: 0 1rem 1rem; } .pf-save #al-test { width: 100%; } }
+
+/* phones: all three tabs visible without sideways scrolling */
+@media (max-width: 480px) {
+  .dash-tabs button { flex: 1 1 0; min-width: 0; padding: 0.7rem 0.3rem; font-size: 0.9rem; line-height: 1.2; white-space: normal; text-align: center; gap: 0.25rem; }
+  .dash-tabs .tab-meter { display: none; }
+  .dash-tabs .mw-crown { width: 0.95em; height: 0.95em; }
+}

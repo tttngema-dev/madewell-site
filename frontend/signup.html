@@ -103,7 +103,7 @@
         msg.className = 'form-msg ok';
         if (data.session) {
           msg.textContent = 'Account created. Redirecting…';
-          setTimeout(() => (location.href = NEXT), 800);
+          if (window.MWLoader) MWLoader.show('Setting up your account…'); setTimeout(() => (location.href = NEXT), 800);
         } else {
           msg.hidden = true;
           showVerify(email);
@@ -140,7 +140,7 @@
         const { error } = await MWAuth.verifySignupCode(pendingEmail, new FormData(e.target).get('code'));
         if (error) throw error;
         say('msg-verify', 'Verified. Taking you to your dashboard…', true);
-        setTimeout(() => (location.href = NEXT), 600);
+        if (window.MWLoader) MWLoader.show('Setting up your account…'); setTimeout(() => (location.href = NEXT), 600);
       } catch (err) {
         say('msg-verify', /expired|invalid/i.test(err.message || '') ? 'That code is wrong or has expired. Check it, or send a new one.' : (err.message || 'Could not verify the code'), false);
       } finally { btn.disabled = false; }

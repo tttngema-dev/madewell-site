@@ -254,3 +254,23 @@
   border-radius: 999px; padding: 0.2rem 0.7rem;
 }
 .detail-panel .docs a.doc-open .doc-cta { background: transparent; color: var(--bulb); border: 1px solid var(--line); }
+
+/* share button in the tender panel */
+.detail-share { position: sticky; top: 0; float: right; margin-right: .5rem; z-index: 1; display: inline-flex; align-items: center; gap: .4rem; height: 2.25rem; padding: 0 .9rem 0 .75rem; border-radius: 999px; background: var(--stage-2); border: 1px solid var(--line); color: var(--paper); font: 600 .9rem var(--sans); cursor: pointer; }
+.detail-share:hover { border-color: var(--gold); color: var(--bulb); }
+.detail-share svg { width: 1.05rem; height: 1.05rem; }
+@media (max-width: 640px) { .detail-share { top: .5rem; height: 2.6rem; padding: 0 1rem 0 .85rem; } }
+
+/* phones: get people to the tenders faster (slim banner, filters tucked behind one button) */
+.filters-toggle { display: none; }
+@media (max-width: 640px) {
+  .strip-more { display: none; }
+  .pro-strip { flex-wrap: nowrap; gap: .6rem; padding: .65rem .8rem; margin-bottom: .75rem; }
+  .pro-strip p { font-size: .88rem; }
+  .pro-strip .btn { width: auto; padding: .45rem .9rem; flex: none; }
+  .filters-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; margin-top: .6rem; padding: .7rem .9rem; background: transparent; color: var(--paper); border: 1px solid var(--line); border-radius: 10px; font: 600 .95rem var(--sans); cursor: pointer; }
+  .filters-toggle[aria-expanded="true"] span { transform: rotate(180deg); }
+  .filters-row { display: none; margin-top: .6rem; }
+  .filters-row.open { display: grid; }
+  .page-hero, .tenders-hero { padding-top: 1.5rem; padding-bottom: .5rem; }
+}

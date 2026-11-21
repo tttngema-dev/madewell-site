@@ -78,9 +78,11 @@
   const COPY = {
     doc: { eye: 'Your free document is done', h: 'Loved how fast that was? Do it for every tender.', sub: 'You’ve seen how it works. With Pro you can fill in, stamp, sign, attach and send every tender you chase, without the printing, scanning and rework.' },
     alerts: { eye: 'Pro feature', h: 'Let the tenders come to you', sub: 'Every morning we email you the best new tenders that match your business: up to 10 a day, never the same one twice. You’ll hear about them while others are still searching.' },
+    download: { eye: 'Your free download is used', h: 'Need more tender documents?', sub: 'You’ve used your free download. With Pro you can download every tender document you need, fill them in, and get daily tender alerts.' },
     upgrade: { eye: 'Made Well Pro', h: 'Win more tenders with less paperwork', sub: 'Stop retyping the same company details into every form. Fill it in once, and every tender becomes a few taps.' },
   };
   const BENEFITS = [
+    '<b>Download every tender document</b>, as many as you need',
     '<b>Fill in unlimited tender documents</b>: type, tick, date, stamp and sign on your phone or computer',
     '<b>Attach your company documents</b>: CSD, tax, B-BBEE and more, merged into one ready-to-submit PDF',
     '<b>Email the finished PDF</b> straight to the buyer from the site',
@@ -98,6 +100,9 @@
     let s = null;
     try { s = await status(); } catch (_) { /* still show the offer */ }
     if (s && s.pro && !opts.force) { try { opts.onUnlocked && opts.onUnlocked(); } catch (_) {} return; }
+    let who = null; try { who = g.MWAuth ? await MWAuth.getUser() : null; } catch (_) {}
+    const guest = !who;
+    const nextUrl = encodeURIComponent((location.pathname.split('/').pop() || 'index.html') + location.search);
     const price = (s && s.price) || 199;
     const c = COPY[opts.reason] || COPY.upgrade;
     const el = document.createElement('div');
@@ -107,28 +112,58 @@
       '<div class="pw-crown">' + CROWN() + '</div>' +
       '<p class="pw-eyebrow">' + esc(c.eye) + '</p><h2 id="pw-title">' + esc(c.h) + '</h2><p class="pw-sub">' + esc(c.sub) + '</p>' +
       '<ul class="pw-list">' + BENEFITS.map((b) => '<li><span>' + b + '</span></li>').join('') + '</ul>' +
-      '<p class="pw-free"><b>Still free, always:</b> browsing tenders and downloading the tender documents. Everything you’ve filled in and uploaded stays safe in your account.</p>' +
+      '<p class="pw-free"><b>Still free:</b> browsing tenders and previewing every document, plus your first download and your first document to fill in. Everything you’ve filled in and uploaded stays safe in your account.</p>' +
       '<div class="pw-price"><span class="pw-amt">' + esc(money(price)) + '</span><span class="pw-per">per month</span></div>' +
       '<p class="pw-day">That’s about ' + esc(perDay(price)) + ' a day. Win one tender and Pro has paid for itself many times over.</p>' +
-      '<button type="button" class="btn pw-go">' + CROWN('on-gold') + ' Go Pro · ' + esc(money(price)) + '/month</button>' +
+      '<button type="button" class="btn pw-go">' + CROWN('on-gold') + (guest ? ' Create a free account to go Pro' : ' Go Pro · ' + esc(money(price)) + '/month') + '</button>' +
       '<p class="pw-msg" role="status" hidden></p>' +
       '<p class="pw-trust">Secure payment by PayFast · billed monthly to your card · cancel any time from your dashboard, no contract</p>' +
-      '<div class="pw-promo"></div>' +
+      (guest ? '<p class="promo"><span class="plan-note">Already have an account? <a class="mini-link" href="login.html?next=' + nextUrl + '">Sign in</a></span></p>' : '<div class="pw-promo"></div>') +
       '<button type="button" class="pw-later">Maybe later</button></div>';
     document.body.appendChild(el);
     openEl = el;
     document.addEventListener('keydown', onEsc, true);
     const card = el.querySelector('.pw-card'), msg = el.querySelector('.pw-msg'), go = el.querySelector('.pw-go');
-    el.querySelector('.pw-promo').appendChild(promoBox(() => {
+    const promoSlot = el.querySelector('.pw-promo');
+    if (promoSlot) promoSlot.appendChild(promoBox(() => {
       card.innerHTML = '<div class="pw-done"><div class="pw-crown">' + CROWN() + '</div><h2>You’re in. Welcome to Pro!</h2><p class="pw-sub">Everything is unlocked. Go and win some tenders.</p><button type="button" class="btn pw-ok">Let’s go</button></div>';
       card.querySelector('.pw-ok').addEventListener('click', () => { closePaywall(); try { opts.onUnlocked && opts.onUnlocked(); } catch (_) {} });
     }));
-    go.addEventListener('click', () => startCheckout(go, msg));
+    go.addEventListener('click', () => {
+      if (guest) { if (g.MWLoader) MWLoader.show('Taking you to sign up…'); location.href = 'signup.html?next=' + nextUrl; return; }
+      startCheckout(go, msg);
+    });
     const dismiss = () => { closePaywall(); try { opts.onClose && opts.onClose(); } catch (_) {} };
     el.querySelector('.pw-x').addEventListener('click', dismiss);
     el.querySelector('.pw-later').addEventListener('click', dismiss);
     el.addEventListener('mousedown', (e) => { if (e.target === el) dismiss(); });
     go.focus();
+  }
+
+  /**
+   * Free plan: one tender document download in total (that same document again is fine). Pro: unlimited.
+   * true = go ahead and download. false = the paywall has been shown instead.
+   */
+  async function allowDownload(ocid, url, title) {
+    let user = null;
+    try { user = g.MWAuth ? await MWAuth.getUser() : null; } catch (_) {}
+    if (user) {
+      try {
+        const r = await MWAuth.api('/api/billing/download', { method: 'POST', body: JSON.stringify({ ocid: ocid || '', doc_url: url, title: title || '' }) });
+        return r.allowed !== false;
+      } catch (err) {
+        if (err && err.status === 402) { openPaywall({ reason: 'download' }); return false; }
+        return true; // our own hiccup must never stop a download
+      }
+    }
+    try { // not signed in: this browser remembers its one free download
+      const raw = localStorage.getItem('mw:dl1');
+      const used = raw ? JSON.parse(raw) : null;
+      if (!used) { localStorage.setItem('mw:dl1', JSON.stringify({ ocid: ocid || '', url })); return true; }
+      if (used.ocid === (ocid || '') && used.url === url) return true;
+    } catch (_) { return true; }
+    openPaywall({ reason: 'download' });
+    return false;
   }
 
   /** true = go ahead. false = the paywall has been shown instead. */
@@ -239,5 +274,5 @@
     toast('Your payment is still being confirmed. Pro will switch on by itself in a minute. Refresh this page shortly.');
   }
 
-  g.MWBilling = { status, changed, locked, isTrialDoc, guardDoc, openPaywall, celebrate, mountPlanCard, syncNav, handleReturn, crown: CROWN, promoBox };
+  g.MWBilling = { status, changed, locked, isTrialDoc, guardDoc, allowDownload, openPaywall, celebrate, mountPlanCard, syncNav, handleReturn, crown: CROWN, promoBox };
 })(window);

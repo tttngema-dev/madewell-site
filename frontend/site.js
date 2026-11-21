@@ -40,4 +40,17 @@
     const n = d.createElement('div'); n.className = 'toast-soon'; n.setAttribute('role', 'status'); n.textContent = 'Business Tools are coming soon.';
     d.body.appendChild(n); t = setTimeout(() => n.remove(), 2600);
   });
+
+  // Branded loading screen (styles in site.css). MWLoader.show('Opening your document…') / MWLoader.hide()
+  let safety;
+  window.MWLoader = {
+    show(msg, maxMs) {
+      root.style.setProperty('--mw-msg', JSON.stringify(msg || 'Loading…'));
+      root.classList.add('mw-loading');
+      clearTimeout(safety); safety = setTimeout(() => root.classList.remove('mw-loading'), maxMs || 20000); // never leave anyone stuck behind it
+    },
+    hide() { clearTimeout(safety); root.classList.remove('mw-loading'); },
+  };
+  if (root.classList.contains('mw-loading')) { clearTimeout(safety); safety = setTimeout(() => root.classList.remove('mw-loading'), 20000); }
+  window.addEventListener('pageshow', (e) => { if (e.persisted) window.MWLoader.hide(); }); // back button
 })();

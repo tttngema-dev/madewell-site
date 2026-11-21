@@ -73,6 +73,7 @@
     const [bx, by] = vp.convertToViewportPoint(r[2], r[3]);
     return [ax, ay, bx, by];
   }
+  const modernBrowser = () => typeof Promise.withResolvers === 'function' && typeof Array.prototype.at === 'function' && typeof structuredClone === 'function';
   const isPhone = () => !!(global.matchMedia && global.matchMedia('(max-width: 760px), (pointer: coarse) and (max-height: 520px)').matches);
   const uid = () => 'i' + Math.random().toString(36).slice(2, 9);
   function debounce(fn, ms) { let t; const d = (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; d.flush = (...a) => { clearTimeout(t); fn(...a); }; return d; }
@@ -456,6 +457,7 @@
           '<span class="dv-funnel-links"><a class="dv-btn dv-primary" href="' + esc(o.guestHint.loginUrl) + '">Sign in</a><a class="dv-btn" href="' + esc(o.guestHint.signupUrl) + '">Create account</a></span>';
         actionsEl.appendChild(tip);
         tip.querySelector('.dv-funnel-x').addEventListener('click', () => tip.remove());
+        if (isPhone()) setTimeout(() => tip.remove(), 9000); // on a phone it steps aside by itself
         tip.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => { try { o.guestHint.onGo && o.guestHint.onGo(); } catch (_) {} }));
         b.addEventListener('click', () => tip.remove());
       }
@@ -541,14 +543,7 @@
       pagesEl.innerHTML = '';
       if (observer) observer.disconnect();
       renderTasks.forEach((t) => { try { t.cancel(); } catch (_) {} }); renderTasks.clear();
-      observer = new IntersectionObserver((entries) => {
-        entries.forEach((en) => {
-          const n = +en.target.dataset.page;
-          const pg = state.pages[n - 1];
-          if (pg) pg.visible = en.isIntersecting;
-          if (en.isIntersecting) renderPage(n); else unrenderPage(n);
-        });
-      }, { root: scrollEl, rootMargin: isPhone() ? '500px 0px' : '900px 0px' });
+      observer = null;
       state.pages.forEach((p) => {
         const wrap = document.createElement('div');
         wrap.className = 'dv-page';
@@ -556,12 +551,12 @@
         wrap.style.width = Math.round(p.w * state.scale) + 'px';
         wrap.style.height = Math.round(p.h * state.scale) + 'px';
         wrap.innerHTML = '<canvas></canvas><div class="dv-ov"></div><span class="dv-pn">' + p.n + ' / ' + state.pages.length + '</span>';
-        p.el = wrap; p.rendered = false; p.visible = false; p.renderEl = null;
+        p.el = wrap; p.rendered = false; p.visible = false; p.renderEl = null; p.failed = false; p.tries = 0;
         pagesEl.appendChild(wrap);
         if (editable) buildOverlay(p);
-        observer.observe(wrap);
         if (editable) wrap.addEventListener('pointerdown', (e) => onPagePointer(e, p));
       });
+      sweepSoon(0);
     }
 
     // One page at a time on phones (several big canvases at once is what makes phones draw blank pages).
@@ -570,31 +565,77 @@
     function acquire() { return new Promise((res) => { const go = () => { if (slots.n < maxSlots()) { slots.n++; res(); } else slots.q.push(go); }; go(); }); }
     function release() { slots.n--; const nx = slots.q.shift(); if (nx) nx(); }
 
+    // ---- which pages are on (or near) the screen. Plain geometry, so it works even where IntersectionObserver does not.
+    const margin = () => (isPhone() ? 500 : 900);
+    function rel(p) {
+      const sr = scrollEl.getBoundingClientRect(), r = p.el.getBoundingClientRect();
+      return { near: r.bottom > sr.top - margin() && r.top < sr.bottom + margin(), far: r.bottom < sr.top - margin() * 2.2 || r.top > sr.bottom + margin() * 2.2, onScreen: r.bottom > sr.top && r.top < sr.bottom };
+    }
+    let sweepT = null;
+    function sweepSoon(ms) { if (sweepT) return; sweepT = setTimeout(() => { sweepT = null; sweep(); }, ms == null ? 80 : ms); }
+    function sweep() {
+      if (state.closed || !state.pages || !scrollEl.isConnected) return;
+      state.pages.forEach((p) => {
+        if (!p.el || !p.el.isConnected) return;
+        const r = rel(p);
+        p.visible = r.near;
+        if (r.near) {
+          if (!p.rendered && !p.failed) renderPage(p.n);
+          else if (p.rendered && r.onScreen && isPurged(p.el.querySelector('canvas'))) { p.rendered = false; renderPage(p.n); } // the phone threw the picture away to save memory
+        } else if (r.far && p.rendered) unrenderPage(p.n);
+      });
+    }
+
+    // ---- a tiny 24x32 copy of the page tells us if anything was drawn
+    function sample(c) {
+      try {
+        const t = document.createElement('canvas'); t.width = 24; t.height = 32;
+        const x = t.getContext('2d', { willReadFrequently: true });
+        x.drawImage(c, 0, 0, 24, 32);
+        const d = x.getImageData(0, 0, 24, 32).data;
+        let ink = 0, clear = 0;
+        for (let i = 0; i < d.length; i += 4) { if (d[i + 3] < 8) clear++; else if (d[i] < 252 || d[i + 1] < 252 || d[i + 2] < 252) ink++; }
+        return { ink, clear, n: d.length / 4 };
+      } catch (_) { return null; }
+    }
+    function isPurged(c) { if (!c || !c.width) return false; const s = sample(c); return !!s && s.clear > s.n * 0.95; }
+    async function expectsContent(page) {
+      try { const ol = await page.getOperatorList(); return ol.fnArray.length > 12; } catch (_) { return true; }
+    }
+
     async function renderPage(n, attempt) {
       attempt = attempt || 0;
       const p = state.pages[n - 1];
-      if (!p || p.rendered) return;
+      if (!p || p.rendered || p.failed) return;
       const el = p.el;
       if (p.renderEl === el) return; // already drawing this exact page element
       p.renderEl = el;
-      let task = null, ok = false, failed = false;
+      let task = null, ok = false, failed = false, blank = false;
       await acquire();
       try {
         if (p.el !== el || !p.visible) return; // layout changed or scrolled far away while waiting
         const page = await state.pdf.getPage(n);
         const dpr = Math.min(global.devicePixelRatio || 1, 2);
-        let rs = state.scale * dpr * Math.pow(0.7, attempt); // a retry draws a bit smaller
-        const maxPx = isPhone() ? 5e6 : 16e6; // phone browsers refuse (draw nothing for) very large canvases
+        let rs = state.scale * dpr * Math.pow(0.7, attempt); // every retry draws a bit smaller
+        const maxPx = isPhone() ? (attempt >= 2 ? 1.6e6 : 4e6) : 16e6; // phone browsers refuse (draw nothing for) very large canvases
         const v0 = page.getViewport({ scale: rs });
         if (v0.width * v0.height > maxPx) rs *= Math.sqrt(maxPx / (v0.width * v0.height));
         const vp = page.getViewport({ scale: rs });
         const canvas = el.querySelector('canvas');
         canvas.width = Math.floor(vp.width); canvas.height = Math.floor(vp.height);
         canvas.style.width = el.style.width; canvas.style.height = el.style.height;
-        task = page.render({ canvasContext: canvas.getContext('2d'), viewport: vp });
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('This browser would not give us a drawing surface');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); // white paper first
+        task = page.render({ canvasContext: ctx, viewport: vp, intent: attempt === 2 ? 'print' : 'display' });
         renderTasks.set(n, task);
         await task.promise;
-        if (p.el === el) { p.rendered = true; ok = true; }
+        if (p.el === el) {
+          // Did it really draw? A page that is entirely white although the PDF says it has content = a phone that failed silently.
+          const sm = sample(canvas);
+          if (sm && sm.ink === 0 && (sm.clear > 0 || await expectsContent(page))) blank = true;
+          else { p.rendered = true; ok = true; }
+        }
       } catch (err) {
         if (!(err && err.name === 'RenderingCancelledException')) { console.warn('[docviewer] render', n, err); failed = true; }
       } finally {
@@ -602,8 +643,16 @@
         if (renderTasks.get(n) === task) renderTasks.delete(n);
         if (p.renderEl === el) p.renderEl = null;
       }
-      // Cancelled by a quick scroll/zoom, or failed: if the page is still on screen, draw it again.
-      if (!ok && p.el === el && p.visible && !p.rendered && attempt < 4) setTimeout(() => renderPage(n, attempt + 1), failed ? 250 : 0);
+      if (ok || p.el !== el) return;
+      if (!p.visible || p.rendered) return; // scrolled away: it is drawn again when it comes back
+      if (blank && attempt >= 1 && !state.compat && state.openPdf) { switchToCompat(); return; }
+      if (blank || failed) {
+        p.tries = (p.tries || 0) + 1;
+        if (attempt < 3) { setTimeout(() => renderPage(n, attempt + 1), failed ? 250 : 50); return; }
+        if (blank) { p.rendered = true; markTrouble(p); return; } // keep what we have; tell the person how to open it properly
+        p.failed = true; markTrouble(p); return;
+      }
+      if (attempt < 4) setTimeout(() => renderPage(n, attempt + 1), 0); // cancelled by a quick scroll / zoom: draw again
     }
     function unrenderPage(n) {
       const p = state.pages[n - 1];
@@ -613,6 +662,47 @@
         const c = p.el.querySelector('canvas'); c.width = 0; c.height = 0; p.rendered = false;
       }
     }
+
+    async function switchToCompat() {
+      if (state.compat) return;
+      state.compat = true;
+      try {
+        renderTasks.forEach((t) => { try { t.cancel(); } catch (_) {} }); renderTasks.clear();
+        const old = state.pdf;
+        state.pdf = await state.openPdf(true);
+        try { old && old.destroy(); } catch (_) {}
+        state.pages.forEach((q) => { q.rendered = false; q.failed = false; q.tries = 0; q.renderEl = null; const c = q.el && q.el.querySelector('canvas'); if (c) { c.width = 0; c.height = 0; } });
+        sweepSoon(0);
+      } catch (err) { console.warn('[docviewer] compatibility mode failed', err); }
+    }
+
+    // A page would not show: say so plainly and offer the phone's own PDF viewer (always works)
+    function openNative() {
+      if (!state.bytes) return;
+      const url = URL.createObjectURL(new Blob([state.bytes], { type: 'application/pdf' }));
+      const w = window.open(url, '_blank');
+      if (!w) location.href = url;
+      setTimeout(() => URL.revokeObjectURL(url), 120000);
+    }
+    function markTrouble(p) {
+      if (!p.el || p.el.querySelector('.dv-pagefail')) return;
+      const d = document.createElement('div');
+      d.className = 'dv-pagefail';
+      d.innerHTML = '<span>This page may not be showing properly here.</span><button type="button" class="dv-btn small">Open in viewer</button>';
+      d.querySelector('button').addEventListener('click', openNative);
+      p.el.appendChild(d);
+      if (!scrollEl.querySelector('.dv-banner')) {
+        const b = document.createElement('div');
+        b.className = 'dv-banner';
+        b.innerHTML = '<span>Some pages look blank? Open this document in your phone’s own PDF viewer.</span><button type="button" class="dv-btn dv-primary small">Open in viewer</button>';
+        b.querySelector('button').addEventListener('click', openNative);
+        scrollEl.insertBefore(b, scrollEl.firstChild);
+      }
+    }
+    // keep the screen honest while scrolling and in the background (some phones drop canvases without telling us)
+    scrollEl.addEventListener('scroll', () => sweepSoon(60), { passive: true });
+    const watchdog = setInterval(() => sweepSoon(0), 1500);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) sweepSoon(100); });
 
     // ------------------------------------------------------------ overlay (edit mode)
     function buildOverlay(p) {
@@ -967,7 +1057,11 @@
 
     async function doDownload(btn) {
       if (!state.bytes) return;
-      if (!editable) { download(new Uint8Array(state.bytes), slug(o.title) + '.pdf'); return; }
+      if (!editable) {
+        if (global.MWBilling && !(await MWBilling.allowDownload(o.ocid, o.url, o.title))) return; // free plan: one download
+        download(new Uint8Array(state.bytes), slug(o.title) + '.pdf');
+        return;
+      }
       openDownload();
     }
 
@@ -1392,6 +1486,7 @@
       state.closed = true;
       if (editable && state.dirty) { try { await saveNow(); } catch (_) {} }
       document.removeEventListener('keydown', onKey);
+      clearInterval(watchdog);
       global.removeEventListener('resize', onResize);
       if (vvCleanup) vvCleanup();
       if (metaVp && metaOrig != null) metaVp.setAttribute('content', metaOrig);
@@ -1427,13 +1522,17 @@
         }
         if (!isPdfBytes(buf)) { fail('This file isn’t a PDF, so it can’t be previewed here. You can download it instead.', true); return; }
         state.bytes = new Uint8Array(buf);
-        state.pdf = await pdfjs.getDocument({
+        // Normal: the fast path. Phones also draw text as shapes (fonts Safari refuses to load otherwise leave text pages blank).
+        // Compatibility mode (used automatically only if a page still comes out blank): no OffscreenCanvas / ImageDecoder / GPU paths. Slower, but works everywhere.
+        state.openPdf = (compat) => pdfjs.getDocument(Object.assign({
           data: state.bytes.slice(0),
-          // fonts, colour profiles and image decoders the PDF may need (without these, text and scans can be missing or distorted)
           standardFontDataUrl: BASE + 'vendor/pdfjs/standard_fonts/',
           iccUrl: BASE + 'vendor/pdfjs/iccs/',
           wasmUrl: BASE + 'vendor/pdfjs/wasm/',
-        }).promise;
+        }, (isPhone() || !modernBrowser()) ? { disableFontFace: true } : {},
+        compat ? { disableFontFace: true, isOffscreenCanvasSupported: false, isImageDecoderSupported: false, enableHWA: false } : {},
+        global.MW_PDF_OPTS || {})).promise;
+        state.pdf = await state.openPdf(false);
 
         // page sizes up-front so scrolling is stable
         const n = state.pdf.numPages;

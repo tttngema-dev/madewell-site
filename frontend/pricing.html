@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Pricing — Made Well</title>
-  <meta name="description" content="Browse and download tenders free. Your first document is free to fill in. Made Well Pro is R199 a month for unlimited documents and daily tender alerts." />
+  <meta name="description" content="Browse and preview tenders free. Your first download and your first document is free to fill in. Made Well Pro is R199 a month for unlimited documents and daily tender alerts." />
   <link rel="icon" href="logo.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -36,7 +36,7 @@
     <section class="page-hero page">
       <p class="eyebrow">Pricing</p>
       <h1>Simple pricing. Start free.</h1>
-      <p class="lead">Browsing and downloading tenders is free, always. Try the full fill-in tools on your first document at no cost. Go Pro when you are bidding regularly.</p>
+      <p class="lead">Browsing and previewing tenders is free, always. Your first download and your first fill-in document are free too. Go Pro when you are bidding regularly.</p>
     </section>
 
     <section class="sec" style="padding-top:1.5rem">
@@ -47,7 +47,7 @@
         <p class="for">Everything you need to find tenders and try the tools.</p>
         <ul>
           <li>Browse and search all open tenders</li>
-          <li>Preview and download tender documents</li>
+          <li>Preview every tender document, and download your first one free</li>
           <li>Save tenders and track closing dates</li>
           <li>Company profile, document vault and signature</li>
           <li>Free receipts and invoices app for your phone</li>
@@ -62,6 +62,7 @@
         <p class="for">Respond to every tender faster, and never miss a new one.</p>
         <ul>
           <li><b>Everything in Free, plus:</b></li>
+          <li>Download every tender document</li>
           <li>Fill in unlimited tender documents</li>
           <li>Company stamp and signature on every form</li>
           <li>Attach CSD, tax, B-BBEE and other certificates, merged into one PDF</li>
@@ -82,8 +83,9 @@
         <thead><tr><th scope="col">Feature</th><th scope="col">Free</th><th scope="col" class="pro-col"><svg class="mw-crown" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M2.6 7.2c-.5-.3-1.2.1-1.1.7L3.3 19c.1.6.6 1 1.2 1h15c.6 0 1.1-.4 1.2-1l1.8-11.1c.1-.6-.6-1-1.1-.7l-4.5 3L12.9 4c-.4-.7-1.4-.7-1.8 0L7.1 10.2l-4.5-3Z"/><rect x="4" y="21" width="16" height="1.6" rx=".8" fill="currentColor"/></svg> Pro &middot; R199/month</th></tr></thead>
         <tbody>
           <tr class="grp"><th colspan="3" scope="colgroup">Finding tenders</th></tr>
-          <tr><th scope="row">Search and browse open tenders<small>Every open tender from National Treasury eTenders</small></th><td class="yes">&#10003;</td><td class="pro-col">&#10003;</td></tr>
-          <tr><th scope="row">Preview and download tender documents<small>No account needed</small></th><td class="yes">&#10003;</td><td class="pro-col">&#10003;</td></tr>
+          <tr><th scope="row">Search and browse open tenders<small>Every open South African tender</small></th><td class="yes">&#10003;</td><td class="pro-col">&#10003;</td></tr>
+          <tr><th scope="row">Preview tender documents<small>Read every document on the site, no account needed</small></th><td class="yes">&#10003;</td><td class="pro-col">&#10003;</td></tr>
+          <tr><th scope="row">Download tender documents<small>The original files, to keep and print</small></th><td>1 document</td><td class="pro-col">Unlimited</td></tr>
           <tr><th scope="row">Save tenders and track closing dates<small>Your dashboard, with a closing-soon list</small></th><td class="yes">&#10003;</td><td class="pro-col">&#10003;</td></tr>
           <tr><th scope="row">Daily tender alert emails<small>The best new matches for your business, up to 10 a day, never the same tender twice</small></th><td>&ndash;</td><td class="pro-col">&#10003;</td></tr>
           <tr class="grp"><th colspan="3" scope="colgroup">Getting ready to bid</th></tr>
@@ -119,7 +121,8 @@
 
     <section id="faq" class="faq">
       <h2>Pricing questions</h2>
-      <details><summary>Do I need a card to try it?</summary><p>No. Browsing, downloading and your first fill-in document are free, with no payment details needed.</p></details>
+      <details><summary>Do I need a card to try it?</summary><p>No. Browsing, previewing, your first download and your first fill-in document are free, with no payment details needed.</p></details>
+      <details><summary>What counts as my free download?</summary><p>The first tender document you download. You can download that same document again as often as you like. Downloading others is part of Pro.</p></details>
       <details><summary>What counts as my free document?</summary><p>The first tender document you start filling in. You can keep editing, attach company documents to it, and download or email it as often as you like.</p></details>
       <details><summary>How does paying work?</summary><p>Pro is R199 a month, charged to your card through PayFast. You can switch it off any time from your dashboard.</p></details>
       <details><summary>What happens if I cancel?</summary><p>You keep Pro until the end of the month you have paid for. Everything you saved stays in your account. You can go back to the free plan, or restart Pro whenever you like.</p></details>
@@ -171,8 +174,8 @@
   var s = null;
   try { s = await MWBilling.status(); } catch (e) {}
   if (s && s.pro) { pro.innerHTML = 'You have Pro &#10003;'; pro.href = 'dashboard.html'; return; }
-  pro.addEventListener('click', function (e) { e.preventDefault(); MWBilling.openPaywall({ reason: 'upgrade', onUnlocked: function () { location.href = 'dashboard.html'; } }); });
-  document.getElementById('promo-slot').appendChild(MWBilling.promoBox(function () { location.href = 'dashboard.html'; }));
+  pro.addEventListener('click', function (e) { e.preventDefault(); MWBilling.openPaywall({ reason: 'upgrade', onUnlocked: function () { MWLoader.show('Opening your dashboard…'); location.href = 'dashboard.html'; } }); });
+  document.getElementById('promo-slot').appendChild(MWBilling.promoBox(function () { MWLoader.show('Opening your dashboard…'); location.href = 'dashboard.html'; }));
 })();
 </script>
 </body>

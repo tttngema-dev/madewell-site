@@ -24,11 +24,15 @@
   }
 
   async function init() {
+    try { await boot(); } finally { if (window.MWLoader) MWLoader.hide(); }
+  }
+  async function boot() {
     const user = await MWAuth.requireUser('login.html');
-    if (!user) return;
+    if (!user) { if (window.MWLoader) MWLoader.show('Taking you to sign in…'); return; }
     await MWAuth.hydrateNav();
     const nm = (user.email || '').split('@')[0]; const hello = $('#hello-name'); if (hello && nm) hello.textContent = '';
     $('#btn-signout').addEventListener('click', async () => {
+      if (window.MWLoader) MWLoader.show('Signing you out…');
       await MWAuth.signOut();
       location.href = 'index.html';
     });
@@ -45,7 +49,7 @@
       const c = card && (card.closest('.tcard') || card.parentElement);
       if (c) { c.classList.add('just-saved'); c.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
     }
-    autoOpenFromUrl();
+    await autoOpenFromUrl();
   }
 
   let currentUser = null;
@@ -74,8 +78,15 @@
     if (btn) { btn.hidden = false; await renderDocs(item, btn); btn.scrollIntoView({ block: 'center' }); }
     const docs = await documentsFor(item);
     const d = docs[parseInt(params.get('doc'), 10)];
-    if (d && MWDocViewer.canPreview(d)) openDoc(item, d);
+    if (d && MWDocViewer.canPreview(d)) await openDoc(item, d);
   }
+
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-share]');
+    if (!b) return;
+    const item = savedItems.find((i) => String(i.id) === b.dataset.share);
+    if (item && window.MWShare) MWShare.tender({ ocid: item.ocid, title: item.title, buyer: item.buyer, closingDate: item.closing_date }, b);
+  });
 
   let savedItems = [];
   let edits = []; // filled-in documents (id, ocid, doc_url, updated_at)
@@ -123,9 +134,16 @@
       row.innerHTML = `<div class="doc-info"><strong>${esc(d.title)}</strong><span>${meta}</span></div>` +
         (can
           ? `<button type="button" class="btn small ${lock ? 'dv-lock' : ''}">${lock ? MWBilling.crown('on-gold') + ' ' : ''}${e ? 'Continue filling in' : 'Open &amp; fill in'}</button>`
-          : `<a class="btn small ghost-btn" href="${esc(d.url)}" target="_blank" rel="noopener">Download</a>`);
+          : `<a class="btn small ghost-btn" data-dl href="${esc(d.url)}" target="_blank" rel="noopener">Download</a>`);
       const b = row.querySelector('button');
       if (b) b.addEventListener('click', () => openDoc(item, d));
+      const dl = row.querySelector('a[data-dl]');
+      if (dl) dl.addEventListener('click', async (ev) => {
+        if (!window.MWBilling) return;
+        ev.preventDefault();
+        if (!(await MWBilling.allowDownload(item.ocid, d.url, d.title))) return; // free plan: one download
+        const go = document.createElement('a'); go.href = d.url; go.target = '_blank'; go.rel = 'noopener'; document.body.appendChild(go); go.click(); go.remove();
+      });
       box.appendChild(row);
     });
   }
@@ -238,6 +256,7 @@
               </label>
               <span class="spacer"></span>
               <button type="button" class="btn small" data-docs="${item.id}">Documents${nDocs ? ' (' + nDocs + ')' : ''}</button>
+              <button type="button" class="linkish" data-share="${item.id}">Share</button>
               <button type="button" class="linkish" data-remove="${item.id}">Remove</button>
             </div>
             <div class="saved-docs" data-docs-for="${esc(item.ocid)}" hidden></div>

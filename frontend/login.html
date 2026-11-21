@@ -113,6 +113,7 @@
         try {
           const { error } = await MWAuth.signIn(fd.get('email'), fd.get('password'));
           if (error) throw error;
+          if (window.MWLoader) MWLoader.show('Signing you in…');
           location.href = next;
         } catch (err) {
           showMsg('msg-password', err.message || 'Sign in failed', false);
@@ -161,6 +162,7 @@
         try {
           const { error } = await MWAuth.verifyLoginCode(codeEmail, new FormData(e.target).get('code'));
           if (error) throw error;
+          if (window.MWLoader) MWLoader.show('Signing you in…');
           location.href = next;
         } catch (err) {
           showMsg('msg-code', /expired|invalid/i.test(err.message || '') ? 'That code is wrong or has expired. Check it, or send a new one.' : (err.message || 'Could not verify the code'), false);
@@ -177,7 +179,7 @@
       });
 
       MWAuth.getUser().then((u) => {
-        if (u) location.replace(next);
+        if (u) { if (window.MWLoader) MWLoader.show('Taking you to your dashboard…'); location.replace(next); }
       });
     })();
   </script>
