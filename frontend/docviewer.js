@@ -352,7 +352,7 @@
     const editable = !!o.editable;
     const state = {
       pdf: null, bytes: null, pages: [], zoom: 1, scale: 1,
-      items: [], fields: {}, defaultSize: 11,
+      items: [], fields: {}, defaultSize: 11, mark: (function () { try { const m = localStorage.getItem('mw:mark'); return m === 'cross' || m === 'circle' ? m : 'tick'; } catch (_) { return 'tick'; } })(),
       tool: null, // 'text' | 'tick' | 'date' | {profile: 'value'}
       selected: null, lastFocus: null, dirty: false, user: null, profile: null,
       saveMode: 'server', closed: false,
@@ -377,7 +377,7 @@
       </header>
       ${editable ? `<div class="dv-tools" role="toolbar" aria-label="Fill in tools">
         <button type="button" class="dv-tool" data-tool="text" title="Click on the page to type text">+ Text</button>
-        <button type="button" class="dv-tool" data-tool="tick" title="Click on the page to place a tick">✓ Tick</button>
+        <span class="dv-markwrap"><button type="button" class="dv-tool" data-tool="tick" aria-haspopup="menu" aria-expanded="false" title="Choose a tick, cross or circle, then click on the page">✓ Tick ▾</button><div class="dv-menu" role="menu" hidden><button type="button" role="menuitem" data-mark="tick">✓ Tick</button><button type="button" role="menuitem" data-mark="cross">✗ Cross</button><button type="button" role="menuitem" data-mark="circle">◯ Circle</button></div></span>
         <button type="button" class="dv-tool" data-tool="date" title="Click on the page to place today's date">Date</button>
         <button type="button" class="dv-tool" data-tool="stamp" title="Add your company stamp (name, date and details)">&#9635; Stamp</button>
         <button type="button" class="dv-tool" data-tool="sign" title="Sign with your finger or mouse">&#9998; Sign</button>
@@ -704,6 +704,48 @@
     const watchdog = setInterval(() => sweepSoon(0), 1500);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) sweepSoon(100); });
 
+
+    // ------------------------------------------------------------ marks: tick, cross, hand-drawn circle
+    const MARK_LABEL = { tick: '✓ Tick', cross: '✗ Cross', circle: '◯ Circle' };
+    function rng(seed) { let a = (seed >>> 0) || 1; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+    // A circle drawn like a person would: one pen stroke, a little wobble, the end overshoots the start, pressure changes the line.
+    // Returns line segments in the item's own page units (0..w, 0..h).
+    function circleSegments(it) {
+      const r = rng(it.seed || 7), w = it.w, h = it.h;
+      const th = Math.max(1.2, Math.min(2.8, Math.min(w, h) * 0.06)); // pen thickness
+      const padX = th * 1.2 + 1, padY = th * 1.2 + 1;
+      const cx = w / 2 + (r() - 0.5) * w * 0.02, cy = h / 2 + (r() - 0.5) * h * 0.03;
+      const rx = Math.max(4, w / 2 - padX), ry = Math.max(4, h / 2 - padY);
+      const cw = r() < 0.7 ? -1 : 1;                    // most people circle anticlockwise
+      const start = -2.1 + (r() - 0.5) * 0.9;           // pen lands near the top left
+      const turns = 1.08 + r() * 0.1;                   // overshoot so the ends cross
+      const open = (r() < 0.5 ? -1 : 1) * (0.05 + r() * 0.06); // the loop does not close exactly
+      const k1 = 2 + Math.floor(r() * 2), k2 = 3 + Math.floor(r() * 3), p1 = r() * 6.28, p2 = r() * 6.28, a1 = 0.025 + r() * 0.03, a2 = 0.012 + r() * 0.02;
+      const n = Math.max(40, Math.min(110, Math.round(Math.PI * (rx + ry) * 0.9 / 2.2)));
+      const pts = [];
+      for (let i = 0; i <= n; i++) {
+        const t = i / n, a = start + cw * t * turns * 2 * Math.PI;
+        const wob = 1 + a1 * Math.sin(a * k1 + p1) + a2 * Math.sin(a * k2 + p2) + open * t;
+        const x = cx + rx * wob * Math.cos(a), y = cy + ry * wob * Math.sin(a);
+        const press = (0.62 + 0.38 * Math.sin(Math.PI * Math.min(1, t * 1.05))) * (0.93 + r() * 0.14);
+        pts.push({ x: Math.max(th / 2, Math.min(w - th / 2, x)), y: Math.max(th / 2, Math.min(h - th / 2, y)), w: th * press });
+      }
+      const segs = [];
+      for (let i = 1; i < pts.length; i++) segs.push({ x1: pts[i - 1].x, y1: pts[i - 1].y, x2: pts[i].x, y2: pts[i].y, w: (pts[i - 1].w + pts[i].w) / 2 });
+      return segs;
+    }
+    function markSvg(it) {
+      const kind = it.mark || 'tick';
+      if (kind === 'circle') {
+        const lines = circleSegments(it).map((s) => '<line x1="' + s.x1.toFixed(2) + '" y1="' + s.y1.toFixed(2) + '" x2="' + s.x2.toFixed(2) + '" y2="' + s.y2.toFixed(2) + '" stroke-width="' + s.w.toFixed(2) + '"/>').join('');
+        return '<svg viewBox="0 0 ' + it.w.toFixed(1) + ' ' + it.h.toFixed(1) + '" preserveAspectRatio="none" stroke="currentColor" stroke-linecap="round" fill="none">' + lines + '</svg>';
+      }
+      if (kind === 'cross') return '<svg viewBox="0 0 1 1" preserveAspectRatio="none"><path d="M0.2 0.2 L0.8 0.8 M0.8 0.2 L0.2 0.8" fill="none" stroke="currentColor" stroke-width="0.12" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      return '<svg viewBox="0 0 1 1" preserveAspectRatio="none"><path d="M0.15 0.55 L0.4 0.8 L0.85 0.2" fill="none" stroke="currentColor" stroke-width="0.12" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    }
+    function drawMark(wrap, it) { const old = wrap.querySelector('svg'); if (old) old.remove(); wrap.insertAdjacentHTML('afterbegin', markSvg(it)); }
+    function markDims(kind, size) { return kind === 'circle' ? { w: size * 5.2, h: size * 2.8 } : { w: size * 1.5, h: size * 1.5 }; }
+
     // ------------------------------------------------------------ overlay (edit mode)
     function buildOverlay(p) {
       const ov = p.el.querySelector('.dv-ov');
@@ -769,7 +811,23 @@
       wrap.appendChild(handle); wrap.appendChild(del);
 
       if (it.type === 'tick') {
-        wrap.insertAdjacentHTML('afterbegin', '<svg viewBox="0 0 1 1" preserveAspectRatio="none"><path d="M0.15 0.55 L0.4 0.8 L0.85 0.2" fill="none" stroke="currentColor" stroke-width="0.12" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+        drawMark(wrap, it);
+        if (it.mark === 'circle') {
+          const grip = document.createElement('span');
+          grip.className = 'dv-grip'; grip.title = 'Drag to resize the circle'; grip.setAttribute('aria-label', 'Resize circle');
+          grip.addEventListener('pointerdown', (e) => {
+            e.preventDefault(); e.stopPropagation(); select(it.id);
+            const sx = e.clientX, sy = e.clientY, ow = it.w, oh = it.h, p = state.pages[it.page - 1];
+            const move = (ev) => {
+              it.w = Math.max(20, Math.min(p.w - it.x, ow + (ev.clientX - sx) / state.scale));
+              it.h = Math.max(14, Math.min(p.h - it.y, oh + (ev.clientY - sy) / state.scale));
+              place(); drawMark(wrap, it);
+            };
+            const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up); touch(); };
+            addEventListener('pointermove', move); addEventListener('pointerup', up); addEventListener('pointercancel', up);
+          });
+          wrap.appendChild(grip);
+        }
         wrap.tabIndex = 0;
       } else if (it.type === 'stamp') {
         const img = document.createElement('img');
@@ -830,7 +888,7 @@
       };
       handle.addEventListener('pointerdown', startDrag);
       // ticks, stamps and signatures have no text to edit, so the whole thing can be dragged (easier with a finger)
-      if (it.type !== 'text') wrap.addEventListener('pointerdown', (e) => { if (!e.target.closest('.dv-x, .dv-handle')) startDrag(e); });
+      if (it.type !== 'text') wrap.addEventListener('pointerdown', (e) => { if (!e.target.closest('.dv-x, .dv-handle, .dv-grip')) startDrag(e); });
       return wrap;
     }
 
@@ -865,7 +923,7 @@
         const sg = state.sigs[sigKey]; it.sigKey = sigKey; it.w = 140; it.h = it.w * (sg ? sg.h / sg.w : 0.4);
       } else if (type === 'stamp') {
         it.spec = spec; it.w = spec.shape === 'round' ? 130 : 190; it.h = it.w * stampAspect(spec);
-      } else if (type === 'tick') { it.w = size * 1.5; it.h = size * 1.5; }
+      } else if (type === 'tick') { it.mark = state.mark; it.seed = Math.floor(Math.random() * 1e9); const dm = markDims(it.mark, size); it.w = dm.w; it.h = dm.h; }
       else {
         const textW = text ? Math.min(p.w - 20, Math.max(80, text.length * size * 0.55 + 12)) : 150;
         it.w = textW; it.h = Math.ceil(size * 1.25 * (text && text.includes('\n') ? text.split('\n').length : 1)) + 4;
@@ -890,7 +948,7 @@
         : (typeof t === 'object' && t.stamp) ? 'Tap on the page where the stamp should go.'
         : (typeof t === 'object' && t.sign) ? 'Tap on the page where your signature should go.'
         : typeof t === 'object' ? 'Now tap on the page where “' + truncate(t.value, 40) + '” should go.'
-          : t === 'text' ? 'Tap on the page where you want to type.' : t === 'tick' ? 'Tap on the page where the tick should go.' : 'Tap on the page where the date should go.';
+          : t === 'text' ? 'Tap on the page where you want to type.' : t === 'tick' ? (state.mark === 'circle' ? 'Tap on the page where the circle should go. Drag its corner to make it bigger.' : state.mark === 'cross' ? 'Tap on the page where the cross should go.' : 'Tap on the page where the tick should go.') : 'Tap on the page where the date should go.';
     }
     const truncate = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
     function defaultHint() {
@@ -929,7 +987,7 @@
         const sg = state.sigs[t.sign], w = 140, h = w * (sg ? sg.h / sg.w : 0.4);
         addItem('signature', p, x - w / 2, y - h / 2, '', null, t.sign);
       }
-      else if (t === 'tick') addItem('tick', p, x - 8, y - 8);
+      else if (t === 'tick') { const dm = markDims(state.mark, state.defaultSize); addItem('tick', p, x - dm.w / 2, y - dm.h / 2); }
       else if (t === 'date') addItem('text', p, x, y - 8, todayText());
       else if (t === 'text') addItem('text', p, x, y - 8);
       else if (typeof t === 'object' && t.value != null) addItem('text', p, x, y - 8, t.value);
@@ -1026,6 +1084,21 @@
           const img = await doc.embedPng(new Uint8Array(await blob.arrayBuffer()));
           const [px, py] = toPdf(it.x, it.y + it.h); // bottom-left of the stamp as displayed
           page.drawImage(img, { x: px, y: py, width: it.w, height: it.h, rotate: L.degrees(rot) });
+          return;
+        }
+        if (it.type === 'tick' && it.mark === 'circle') {
+          circleSegments(it).forEach((sg) => {
+            const [ax, ay] = toPdf(it.x + sg.x1, it.y + sg.y1), [bx, by] = toPdf(it.x + sg.x2, it.y + sg.y2);
+            page.drawLine({ start: { x: ax, y: ay }, end: { x: bx, y: by }, thickness: sg.w, color: black, lineCap: 1 });
+          });
+          return;
+        }
+        if (it.type === 'tick' && it.mark === 'cross') {
+          const side = it.w;
+          const pt = (u, v) => { const [px, py] = toPdf(it.x + u * side, it.y + v * side); return { x: px, y: py }; };
+          const thickness = Math.max(1, side * 0.11);
+          page.drawLine({ start: pt(0.2, 0.2), end: pt(0.8, 0.8), thickness, color: black, lineCap: 1 });
+          page.drawLine({ start: pt(0.8, 0.2), end: pt(0.2, 0.8), thickness, color: black, lineCap: 1 });
           return;
         }
         if (it.type === 'tick') {
@@ -1356,10 +1429,36 @@
       });
     }
 
+    // ------------------------------------------------------------ tick / cross / circle menu
+    function markBtn() { return root.querySelector('[data-tool="tick"]'); }
+    function syncMarkBtn() {
+      const b = markBtn(); if (!b) return;
+      b.textContent = MARK_LABEL[state.mark] + ' ▾';
+      root.querySelectorAll('[data-mark]').forEach((m) => m.classList.toggle('cur', m.dataset.mark === state.mark));
+    }
+    function closeMarkMenu() { const m = root.querySelector('.dv-menu'); if (m) m.hidden = true; const b = markBtn(); if (b) b.setAttribute('aria-expanded', 'false'); }
+    function toggleMarkMenu() {
+      const m = root.querySelector('.dv-menu'); if (!m) return;
+      m.hidden = !m.hidden; const b = markBtn(); if (b) b.setAttribute('aria-expanded', String(!m.hidden));
+      if (!m.hidden && b) { const r = b.getBoundingClientRect(); m.style.top = Math.round(r.bottom + 4) + 'px'; m.style.left = Math.max(8, Math.min(Math.round(r.left), innerWidth - 168)) + 'px'; }
+      if (!m.hidden) { const cur = m.querySelector('.cur') || m.firstElementChild; if (cur) cur.focus(); }
+    }
+    function chooseMark(kind) {
+      state.mark = kind === 'cross' || kind === 'circle' ? kind : 'tick';
+      try { localStorage.setItem('mw:mark', state.mark); } catch (_) {}
+      syncMarkBtn(); closeMarkMenu(); setTool('tick'); // ready to place: tap on the page
+    }
+    root.addEventListener('keydown', (e) => { const mm = root.querySelector('.dv-menu'); if (e.key === 'Escape' && mm && !mm.hidden) { e.stopPropagation(); closeMarkMenu(); const b = markBtn(); if (b) b.focus(); } }, true);
+    if (editable) syncMarkBtn();
+
     // ------------------------------------------------------------ events
     root.addEventListener('click', (e) => {
+      const mk = e.target.closest('[data-mark]');
+      if (mk && root.contains(mk)) { chooseMark(mk.dataset.mark); return; }
+      if (!e.target.closest('.dv-markwrap')) closeMarkMenu();
       const t = e.target.closest('[data-act],[data-tool]');
       if (!t || !root.contains(t)) return;
+      if (t.dataset.tool === 'tick') { toggleMarkMenu(); return; }
       if (t.dataset.tool === 'stamp') { openStamp(); return; }
       if (t.dataset.tool === 'sign') { openSign(); return; }
       if (t.dataset.tool) { setTool(state.tool === t.dataset.tool ? null : t.dataset.tool); return; }
@@ -1384,7 +1483,7 @@
             const nw = Math.max(50, Math.min(420, st.w * k)); st.h = st.h * (nw / st.w); st.w = nw;
             root.querySelector('.dv-item[data-id="' + st.id + '"]')._place(); touch();
           }
-          else if (tick) { tick.size = Math.max(6, Math.min(28, tick.size + d)); tick.w = tick.h = tick.size * 1.5; root.querySelector('.dv-item[data-id="' + tick.id + '"]')._place(); touch(); }
+          else if (tick) { const was = tick.size; tick.size = Math.max(6, Math.min(28, tick.size + d)); if (tick.mark === 'circle') { const k = tick.size / was; tick.w = Math.max(20, tick.w * k); tick.h = Math.max(14, tick.h * k); } else { tick.w = tick.h = tick.size * 1.5; } const te = root.querySelector('.dv-item[data-id="' + tick.id + '"]'); te._place(); drawMark(te, tick); touch(); }
           else { state.defaultSize = Math.max(6, Math.min(28, state.defaultSize + d)); setStatus('New text size: ' + state.defaultSize + ' pt'); }
           break;
         }

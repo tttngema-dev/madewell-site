@@ -260,3 +260,14 @@ button.dv-w.on { background: rgba(255, 211, 107, 0.6); }
   .dv-funnel strong { font-size: 0.95rem; padding-right: 1.8rem; }
   .dv-funnel .dv-btn { padding: 0.45rem 0.9rem; font-size: 0.9rem; min-height: 0; }
 }
+
+/* tick / cross / circle menu and the circle's resize grip */
+.dv-markwrap { display: inline-block; }
+.dv-menu { position: fixed; z-index: 120; min-width: 10rem; display: grid; gap: 0.15rem; padding: 0.3rem; background: var(--stage-2); border: 1px solid var(--gold); border-radius: 12px; box-shadow: 0 14px 34px rgba(0, 0, 0, 0.55); }
+.dv-menu[hidden] { display: none; }
+.dv-menu button { font: inherit; font-weight: 600; font-size: 1rem; text-align: left; color: var(--paper); background: none; border: 0; border-radius: 8px; padding: 0.7rem 0.9rem; cursor: pointer; min-height: 2.6rem; }
+.dv-menu button:hover, .dv-menu button:focus-visible { background: rgba(255, 255, 255, 0.08); color: var(--bulb); outline: none; }
+.dv-menu button.cur { color: var(--bulb); box-shadow: inset 3px 0 0 var(--gold); }
+.dv-grip { position: absolute; right: -9px; bottom: -9px; width: 18px; height: 18px; border-radius: 50%; background: var(--gold); border: 2px solid #1a1200; cursor: nwse-resize; display: none; touch-action: none; z-index: 2; }
+.dv-item.sel .dv-grip { display: block; }
+@media (pointer: coarse) { .dv-grip { width: 26px; height: 26px; right: -13px; bottom: -13px; } }
