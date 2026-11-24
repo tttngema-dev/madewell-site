@@ -398,6 +398,10 @@
   state.sort = $('#sort').value;
   const fToggle = $('#filters-toggle'), fRow = $('#filters-row');
   if (fToggle) fToggle.addEventListener('click', () => { const on = fRow.classList.toggle('open'); fToggle.setAttribute('aria-expanded', String(on)); });
+  const urlP = new URLSearchParams(location.search).get('province'); // from the province pages
+  if (urlP) { const sel = $('#province'); const hit = [...sel.options].find((o) => o.value === urlP || o.text === urlP); if (hit) { sel.value = hit.value; state.province = hit.value; } }
+  const urlS = new URLSearchParams(location.search).get('status'); // from the province / category pages
+  if (urlS === 'open' || urlS === 'closed') { $('#status').value = urlS; state.status = urlS; }
   const urlQ = new URLSearchParams(location.search).get('q'); // from the homepage search box
   if (urlQ && urlQ.trim()) { state.q = urlQ.trim().slice(0, 120); $('#q').value = state.q; }
   if (window.MWAuth) MWAuth.hydrateNav();

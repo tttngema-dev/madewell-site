@@ -1,0 +1,6 @@
+# Made Well. Cloudflare may add its own Content-Signal lines above this.
+User-agent: *
+Allow: /
+Disallow: /admin
+
+Sitemap: https://madewelll.co.za/sitemap.xml

@@ -3,8 +3,27 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Made Well — Find and respond to South African tenders</title>
-  <meta name="description" content="Find open South African tenders, preview the documents free, and fill in, stamp, sign and send your bid documents with less paperwork. Free to browse. Pro is R199 a month." />
+  <!-- seo:start -->
+  <title>South African Tenders: Find, Fill In &amp; Win Bids | Made Well</title>
+  <meta name="description" content="Find open South African tenders, preview the documents free, and fill in, stamp, sign and send your bid documents. Daily tender alerts. Free to start." />
+  <meta name="robots" content="index, follow, max-image-preview:large" />
+  <link rel="canonical" href="https://madewelll.co.za/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Made Well" />
+  <meta property="og:locale" content="en_ZA" />
+  <meta property="og:title" content="South African Tenders: Find, Fill In &amp; Win Bids | Made Well" />
+  <meta property="og:description" content="Find open South African tenders, preview the documents free, and fill in, stamp, sign and send your bid documents. Daily tender alerts. Free to start." />
+  <meta property="og:url" content="https://madewelll.co.za/" />
+  <meta property="og:image" content="https://madewelll.co.za/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="628" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="South African Tenders: Find, Fill In &amp; Win Bids | Made Well" />
+  <meta name="twitter:description" content="Find open South African tenders, preview the documents free, and fill in, stamp, sign and send your bid documents. Daily tender alerts. Free to start." />
+  <meta name="twitter:image" content="https://madewelll.co.za/og-image.png" />
+  <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://madewelll.co.za/#org", "name": "Made Well", "url": "https://madewelll.co.za/", "logo": "https://madewelll.co.za/logo.png", "contactPoint": {"@type": "ContactPoint", "telephone": "+27-67-258-1319", "contactType": "customer support", "areaServed": "ZA", "availableLanguage": "English"}}, {"@type": "WebSite", "@id": "https://madewelll.co.za/#website", "url": "https://madewelll.co.za/", "name": "Made Well", "inLanguage": "en-ZA", "publisher": {"@id": "https://madewelll.co.za/#org"}, "potentialAction": {"@type": "SearchAction", "target": {"@type": "EntryPoint", "urlTemplate": "https://madewelll.co.za/tenders?q={search_term_string}"}, "query-input": "required name=search_term_string"}}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Is browsing tenders really free?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. You can search every open tender and preview its documents without an account. Your first download is free too. Unlimited downloads are part of Pro."}}, {"@type": "Question", "name": "What do I get when I create a free account?", "acceptedAnswer": {"@type": "Answer", "text": "You can save tenders and track closing dates, keep your company profile, documents and signature ready, and fill in, attach to and send your first tender document completely free."}}, {"@type": "Question", "name": "What does Pro add?", "acceptedAnswer": {"@type": "Answer", "text": "Pro is R199 a month. It lets you fill in unlimited documents, with your stamp, signature and attached company documents, email them straight to the buyer, and get daily tender alerts matched to your business."}}, {"@type": "Question", "name": "Where do the tenders come from?", "acceptedAnswer": {"@type": "Answer", "text": "From official South African public tender sources. Always confirm the closing time and the official bid pack before you bid."}}, {"@type": "Question", "name": "Can I cancel Pro?", "acceptedAnswer": {"@type": "Answer", "text": "Yes, any time from your dashboard. You keep Pro until the end of the month you have paid for, and everything you saved stays in your account."}}, {"@type": "Question", "name": "Is the receipts and invoices app free?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. It is free to use, needs no account, and works on your phone even offline. Open it from Business Tools."}}, {"@type": "Question", "name": "Do you also register companies?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Company registration (R580) and beneficial ownership filing (R500) are on our Business Services page."}}]}</script>
+  <!-- seo:end -->
   <link rel="icon" href="logo.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -136,6 +155,15 @@ src="https://www.facebook.com/tr?id=1691870438976651&ev=PageView&noscript=1"
       </div>
     </section>
 
+    <section class="sec alt" id="browse">
+      <div class="sec-head"><p class="eyebrow">Browse tenders</p><h2>Find tenders by province and category</h2><p>Jump straight to the tenders that matter to you.</p></div>
+      <h3 style="margin-bottom:.6rem">By province</h3>
+      <div class="chip-row">' + ''.join('<a class="chip" href="/tenders-in-%s">%s</a>' % (x['slug'], x['name']) for x in __import__('seo_data').PROVINCES) + '</div>
+      <h3 style="margin:1.5rem 0 .6rem">By category</h3>
+      <div class="chip-row">' + ''.join('<a class="chip" href="/%s-tenders-south-africa">%s</a>' % (x['slug'], x['name']) for x in __import__('seo_data').SECTORS) + '</div>
+      <p style="margin-top:1.25rem"><a class="mini-link" href="/browse-tenders">All provinces, categories and guides &rarr;</a></p>
+    </section>
+
     <section id="faq" class="faq">
       <h2>Questions, answered</h2>
       <details><summary>Is browsing tenders really free?</summary><p>Yes. You can search every open tender and preview its documents without an account. Your first download is free too. Unlimited downloads are part of Pro.</p></details>
@@ -189,6 +217,8 @@ src="https://www.facebook.com/tr?id=1691870438976651&ev=PageView&noscript=1"
   var box = document.getElementById('live-list'), cnt = document.getElementById('live-count');
   var cfg = window.MADEWELL || {};
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  function slug(s) { return String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70).replace(/-+$/, ''); }
+  function tpath(t) { return '/tender/' + (slug(t.title) || 'tender') + '--' + encodeURIComponent(t.ocid); }
   function closes(iso) {
     if (!iso) return 'No closing date';
     var d = Math.ceil((new Date(iso) - new Date()) / 86400000);
@@ -203,7 +233,7 @@ src="https://www.facebook.com/tr?id=1691870438976651&ev=PageView&noscript=1"
       if (!j || !j.ok || !j.items || !j.items.length) throw new Error('none');
       cnt.textContent = (j.openCount ? j.openCount.toLocaleString('en-ZA') + ' open tenders right now. The latest:' : 'The latest open tenders:');
       box.innerHTML = j.items.slice(0, 4).map(function (t) {
-        return '<a class="t-prev" href="tenders.html?ocid=' + encodeURIComponent(t.ocid) + '"><strong>' + esc(t.title || t.ocid) + '</strong><span>' + esc(t.buyer || 'Buyer not listed') + (t.province ? ' · ' + esc(t.province) : '') + '</span><span class="closes">' + esc(closes(t.closingDate)) + '</span></a>';
+        return '<a class="t-prev" href="' + tpath(t) + '"><strong>' + esc(t.title || t.ocid) + '</strong><span>' + esc(t.buyer || 'Buyer not listed') + (t.province ? ' · ' + esc(t.province) : '') + '</span><span class="closes">' + esc(closes(t.closingDate)) + '</span></a>';
       }).join('');
     })
     .catch(function () {
