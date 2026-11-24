@@ -498,9 +498,17 @@ async function expandFill(mode = 'full') {
 const rank = (s) => (s.status === 'closed' ? 1 : 0);
 const pubKey = (s) => s.published || s.openingDate || '';
 
-function filterSort(list, { q, statusFilter, category, province, sort }) {
+function filterSort(list, { q, qany, statusFilter, category, province, sort }) {
   const now = Date.now();
   let out = list.map((it) => serialize(it, now));
+  if (qany) {
+    // whole-word match on the tender title, e.g. "ICT|software|computer" (so "ICT" does not match "district")
+    const alts = String(qany).split('|').map((w) => w.trim()).filter(Boolean).slice(0, 12).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    if (alts.length) {
+      const re = new RegExp('\\b(' + alts.join('|') + ')\\b', 'i');
+      out = out.filter((t) => re.test(t.title || ''));
+    }
+  }
   if (q) {
     const qq = q.toLowerCase();
     out = out.filter(
@@ -597,6 +605,7 @@ router.get('/tenders', async (req, res) => {
     }
 
     const q = (req.query.q || '').trim();
+    const qany = String(req.query.qany || '').slice(0, 200);
     const statusFilter = (req.query.status || '').toLowerCase();
     const category = (req.query.category || '').toLowerCase();
     const province = (req.query.province || '').toLowerCase();
@@ -604,7 +613,7 @@ router.get('/tenders', async (req, res) => {
     const pageSize = Math.min(50, Math.max(5, parseInt(req.query.pageSize, 10) || 20));
     const sort = req.query.sort || 'recommended';
 
-    const list = filterSort(Array.from(store.byOcid.values()), { q, statusFilter, category, province, sort });
+    const list = filterSort(Array.from(store.byOcid.values()), { q, qany, statusFilter, category, province, sort });
     const total = list.length;
     const start = (page - 1) * pageSize;
     const items = list.slice(start, start + pageSize);
@@ -659,11 +668,32 @@ router.get('/tenders', async (req, res) => {
   }
 });
 
+/** Open tenders in a light form, for sitemap.xml (read by the Cloudflare Worker). */
+router.get('/tenders-sitemap', async (_req, res) => {
+  try {
+    await ensureStore();
+    const now = Date.now();
+    const items = [];
+    for (const it of store.byOcid.values()) {
+      const t = serialize(it, now);
+      if (t.status !== 'open' || !t.ocid || !t.title) continue;
+      items.push({ ocid: t.ocid, title: t.title, buyer: t.buyer || '', province: t.province || '', published: t.published || null, closingDate: t.closingDate || null });
+    }
+    items.sort((a, b) => String(b.published || '').localeCompare(String(a.published || '')));
+    res.set('Cache-Control', 'public, max-age=600');
+    res.json({ ok: true, count: items.length, partial: store.byOcid.size < 50, items: items.slice(0, 5000) });
+  } catch (err) {
+    res.status(502).json({ ok: false, error: 'Could not build the tender list' });
+  }
+});
+
 router.get('/tenders/:ocid', async (req, res) => {
   try {
     await ensureStore();
     const ocid = decodeURIComponent(req.params.ocid);
     const found = store.byOcid.get(ocid);
+    // Still warming up after a restart? Say "try again" (503), not "gone" (404), so Google keeps the page.
+    if (!found && store.byOcid.size < 50) return res.status(503).set('Retry-After', '120').json({ ok: false, error: 'Tender list is still loading', retry: true });
     if (!found) return res.status(404).json({ ok: false, error: 'Tender not found' });
     res.json({ ok: true, item: serialize(found) });
   } catch (err) {
