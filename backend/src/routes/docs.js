@@ -5,7 +5,7 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { supabase } from '../supabase.js';
 import { fetchDocument, isAllowedUrl, looksLikePdf } from '../docProxy.js';
-import { checkDocAccess, PRO_REQUIRED } from '../entitlement.js';
+import { checkDocAccess, peekExport, recordExport, PRO_REQUIRED } from '../entitlement.js';
 
 const router = Router();
 
@@ -138,6 +138,8 @@ router.post('/account/docs/email', requireAuth, async (req, res) => {
     const b = req.body || {};
     const access = await checkDocAccess(req.user.id, b.ocid, b.doc_url);
     if (!access.allowed || (!access.pro && !b.ocid)) return res.status(402).json({ ...PRO_REQUIRED, reason: 'doc', error: 'Emailing documents is part of Made Well Pro.' });
+    const ex = await peekExport(req.user.id, b.ocid, b.doc_url);
+    if (!ex.allowed) return res.status(402).json({ ...PRO_REQUIRED, reason: 'export', error: 'Your free filled-in document has been used. Go Pro to email more.' });
     const to = parseRecipients(b.to);
     if (!to.length) return res.status(400).json({ ok: false, error: 'Enter an email address to send to.' });
     if (to.length > 5) return res.status(400).json({ ok: false, error: 'You can send to at most 5 addresses at a time.' });
@@ -178,6 +180,7 @@ router.post('/account/docs/email', requireAuth, async (req, res) => {
       console.error('[doc email] Resend', r.status, detail);
       return res.status(502).json({ ok: false, error: 'The email service rejected the message. Please check the address and try again.' });
     }
+    await recordExport(req.user.id, b.ocid, b.doc_url, 'email'); // the email really went out: that was their one free finished document
     res.json({ ok: true, sent_to: to });
   } catch (err) {
     console.error('[doc email]', err.message);

@@ -95,6 +95,20 @@
     return getClient().auth.verifyOtp({ email, token: String(token).replace(/\s+/g, ''), type: 'email' });
   }
 
+  // ---- forgot password: a one-time emailed code, then a new password ----
+  async function sendResetCode(email) {
+    return getClient().auth.resetPasswordForEmail(String(email).trim()); // always "ok" even if no such account (so nobody can probe emails)
+  }
+  async function resetPasswordWithCode(email, code, newPassword) {
+    const c = getClient();
+    const v = await c.auth.verifyOtp({ email: String(email).trim(), token: String(code).replace(/\s+/g, ''), type: 'recovery' });
+    if (v.error) return v;
+    return c.auth.updateUser({ password: newPassword }); // they are now signed in with the new password
+  }
+  async function setNewPassword(newPassword) { // only used when someone arrives from an old-style reset LINK
+    return getClient().auth.updateUser({ password: newPassword });
+  }
+
   async function signOut() {
     return getClient().auth.signOut();
   }
@@ -154,6 +168,9 @@
     resendSignupCode,
     sendLoginCode,
     verifyLoginCode,
+    sendResetCode,
+    resetPasswordWithCode,
+    setNewPassword,
     signOut,
     requireUser,
     hydrateNav,

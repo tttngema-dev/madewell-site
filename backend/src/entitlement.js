@@ -56,25 +56,55 @@ export async function checkDocAccess(userId, ocid, docUrl) {
 }
 
 /**
- * Free plan: ONE tender document download in total (downloading that same document again is fine).
- * Pro: unlimited. If we can't tell (database hiccup, SQL not run yet) we let it through and log it.
+ * Free plan: ONE tender document download in total. Exactly once: not the same document again, not another one.
+ * Pro: unlimited. { claim: true } only records a download that a signed-out visitor already made in their browser
+ * (so signing up does not give a second free one). If we can't tell (database hiccup, SQL not run yet) we let it through and log it.
  */
-export async function checkDownload(userId, ocid, docUrl, title) {
+export async function checkDownload(userId, ocid, docUrl, title, opts = {}) {
   try {
     const sub = await getSubscription(userId);
     if (isProRow(sub)) return { allowed: true, pro: true };
-    const { data, error } = await supabase.from('free_downloads').select('ocid, doc_url').eq('user_id', userId).maybeSingle();
+    const { data, error } = await supabase.from('free_downloads').select('ocid').eq('user_id', userId).maybeSingle();
     if (error) throw error;
-    if (!data) {
-      const ins = await supabase.from('free_downloads').insert({ user_id: userId, ocid: String(ocid || ''), doc_url: String(docUrl || ''), doc_title: String(title || '').slice(0, 200) || null });
-      if (ins.error && ins.error.code !== '23505') throw ins.error;
-      return { allowed: true, first: true };
-    }
-    return { allowed: data.ocid === String(ocid) && data.doc_url === String(docUrl) };
+    if (data) return { allowed: !!opts.claim, used: true };   // already used: a claim is simply "noted", a real download is refused
+    const ins = await supabase.from('free_downloads').insert({ user_id: userId, ocid: String(ocid || ''), doc_url: String(docUrl || ''), doc_title: String(title || '').slice(0, 200) || null });
+    if (ins.error && ins.error.code !== '23505') throw ins.error;
+    return { allowed: true, first: true };
   } catch (err) {
     console.error('[entitlement] download check failed, allowing:', err.message);
     return { allowed: true, unknown: true };
   }
+}
+
+/**
+ * Free plan: ONE finished filled-in document (downloaded OR emailed), and only for their one free fill-in document.
+ * peekExport() asks; recordExport() uses it up (after the email was really sent, or when the download is handed over).
+ */
+export async function peekExport(userId, ocid, docUrl) {
+  try {
+    const sub = await getSubscription(userId);
+    if (isProRow(sub)) return { allowed: true, pro: true };
+    const access = await checkDocAccess(userId, ocid, docUrl);
+    if (!access.allowed) return { allowed: false, reason: 'doc' };
+    const { data, error } = await supabase.from('free_exports').select('user_id').eq('user_id', userId).maybeSingle();
+    if (error) throw error;
+    return { allowed: !data, reason: data ? 'export' : null };
+  } catch (err) {
+    console.error('[entitlement] export check failed, allowing:', err.message);
+    return { allowed: true, unknown: true };
+  }
+}
+export async function recordExport(userId, ocid, docUrl, kind) {
+  try {
+    const sub = await getSubscription(userId);
+    if (isProRow(sub)) return;
+    const r = await supabase.from('free_exports').insert({ user_id: userId, ocid: String(ocid || ''), doc_url: String(docUrl || ''), kind: kind || null });
+    if (r.error && r.error.code !== '23505') throw r.error;
+  } catch (err) { console.error('[entitlement] could not record export:', err.message); }
+}
+export async function getFreeExport(userId) {
+  try { const { data } = await supabase.from('free_exports').select('kind').eq('user_id', userId).maybeSingle(); return data || null; }
+  catch (_) { return null; }
 }
 
 export async function getFreeDownload(userId) {

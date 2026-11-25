@@ -53,6 +53,36 @@
         </label>
         <p id="msg-password" class="form-msg" role="status" hidden></p>
         <button class="btn" type="submit">Sign in</button>
+        <p class="fine"><button type="button" id="forgot-open" class="linkish">Forgot your password?</button></p>
+      </form>
+
+      <form id="form-forgot" class="auth-form" hidden>
+        <h2 style="font-size:1.3rem;margin:0">Reset your password</h2>
+        <label>Email
+          <input type="email" name="email" required autocomplete="email" placeholder="you@company.co.za" />
+        </label>
+        <p class="fine">We will email you a 6-digit code. Enter it on the next screen to choose a new password.</p>
+        <p id="msg-forgot" class="form-msg" role="status" hidden></p>
+        <button class="btn" type="submit">Email me a reset code</button>
+        <p class="fine"><button type="button" id="forgot-back" class="linkish">Back to sign in</button></p>
+      </form>
+
+      <form id="form-reset" class="auth-form" hidden>
+        <h2 style="font-size:1.3rem;margin:0">Choose a new password</h2>
+        <p class="fine" id="reset-sent">Enter the code we emailed you, then your new password.</p>
+        <label id="reset-code-label">Reset code
+          <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="12" placeholder="123456" style="letter-spacing:.3em;font-size:1.4rem;text-align:center" />
+        </label>
+        <label>New password
+          <input type="password" name="password" required autocomplete="new-password" minlength="8" />
+        </label>
+        <label>Type it again
+          <input type="password" name="password2" required autocomplete="new-password" minlength="8" />
+        </label>
+        <p class="fine">At least 8 characters.</p>
+        <p id="msg-reset" class="form-msg" role="status" hidden></p>
+        <button class="btn" type="submit">Save new password &amp; sign in</button>
+        <p class="fine"><button type="button" id="reset-resend" class="linkish">Send a new code</button> &middot; <button type="button" id="reset-back" class="linkish">Back to sign in</button></p>
       </form>
 
       <form id="form-magic" class="auth-form" hidden>
@@ -97,6 +127,8 @@
           document.getElementById('form-password').hidden = tab !== 'password';
           document.getElementById('form-magic').hidden = tab !== 'magic';
           document.getElementById('form-code').hidden = true;
+          document.getElementById('form-forgot').hidden = true;
+          document.getElementById('form-reset').hidden = true;
         });
       });
 
@@ -180,8 +212,67 @@
         document.getElementById('form-code').hidden = true; document.getElementById('form-magic').hidden = false;
       });
 
+      // ---- forgot password ----
+      const $ = (id) => document.getElementById(id);
+      let resetEmail = '', linkMode = false;
+      function showOnly(id) {
+        ['form-password', 'form-magic', 'form-code', 'form-forgot', 'form-reset'].forEach((f) => { $(f).hidden = f !== id; });
+        document.querySelector('.tabs').hidden = id === 'form-forgot' || id === 'form-reset';
+      }
+      function backToSignIn() { showOnly('form-password'); document.querySelector('.tabs').hidden = false; }
+      $('forgot-open').addEventListener('click', () => {
+        const typed = document.querySelector('#form-password [name=email]').value.trim();
+        if (typed) $('form-forgot').querySelector('[name=email]').value = typed;
+        showOnly('form-forgot'); $('form-forgot').querySelector('[name=email]').focus();
+      });
+      $('forgot-back').addEventListener('click', backToSignIn);
+      $('reset-back').addEventListener('click', backToSignIn);
+      const friendly = (m) => /rate limit|seconds|too many/i.test(m || '') ? 'Please wait a minute before asking for another code.' : (m || 'Something went wrong. Please try again.');
+      $('form-forgot').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector('button[type=submit]'); btn.disabled = true;
+        try {
+          const email = String(new FormData(e.target).get('email')).trim();
+          const { error } = await MWAuth.sendResetCode(email);
+          if (error) throw error;
+          resetEmail = email; linkMode = false;
+          $('reset-code-label').hidden = false; $('form-reset').querySelector('[name=code]').required = true;
+          $('reset-sent').textContent = 'If there is an account for ' + email + ', we have emailed it a code. It can take a minute. Check spam too.';
+          showOnly('form-reset'); $('form-reset').querySelector('[name=code]').focus();
+          cooldown($('reset-resend'), 30);
+        } catch (err) { showMsg('msg-forgot', friendly(err.message), false); }
+        finally { btn.disabled = false; }
+      });
+      $('reset-resend').addEventListener('click', async (e) => {
+        try { const { error } = await MWAuth.sendResetCode(resetEmail); if (error) throw error; showMsg('msg-reset', 'New code sent.', true); cooldown(e.target, 30); }
+        catch (err) { showMsg('msg-reset', friendly(err.message), false); }
+      });
+      $('form-reset').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target), btn = e.target.querySelector('button[type=submit]');
+        if (fd.get('password') !== fd.get('password2')) { showMsg('msg-reset', 'The two passwords do not match.', false); return; }
+        btn.disabled = true;
+        try {
+          const { error } = linkMode ? await MWAuth.setNewPassword(fd.get('password')) : await MWAuth.resetPasswordWithCode(resetEmail, fd.get('code'), fd.get('password'));
+          if (error) throw error;
+          showMsg('msg-reset', 'Password changed. Signing you in…', true);
+          if (window.MWLoader) MWLoader.show('Signing you in…');
+          location.href = next;
+        } catch (err) {
+          const m = err.message || '';
+          showMsg('msg-reset', /expired|invalid/i.test(m) && !/password/i.test(m) ? 'That code is wrong or has expired. Check it, or send a new one.' : /same|different|weak|short/i.test(m) ? m : friendly(m), false);
+        } finally { btn.disabled = false; }
+      });
+      // someone who opens an old-style reset LINK from an email lands here already verified: let them choose the new password
+      const fromLink = /type=recovery/.test(location.hash);
+      if (fromLink) {
+        linkMode = true; showOnly('form-reset');
+        $('reset-code-label').hidden = true; $('form-reset').querySelector('[name=code]').required = false;
+        $('reset-sent').textContent = 'Choose a new password for your account.'; $('reset-resend').hidden = true;
+      }
+
       MWAuth.getUser().then((u) => {
-        if (u) { if (window.MWLoader) MWLoader.show('Taking you to your dashboard…'); location.replace(next); }
+        if (u && !fromLink) { if (window.MWLoader) MWLoader.show('Taking you to your dashboard…'); location.replace(next); }
       });
     })();
   </script>

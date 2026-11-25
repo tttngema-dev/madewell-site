@@ -705,6 +705,27 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden) sweepSoon(100); });
 
 
+    // The line breaks the person sees in the text box, measured from the browser itself.
+    function screenLines(ta, text) {
+      try {
+        const cs = getComputedStyle(ta), m = document.createElement('div');
+        m.style.cssText = 'position:fixed;left:-9999px;top:0;visibility:hidden;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;box-sizing:content-box;margin:0;padding:0;border:0;';
+        m.style.width = (ta.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) + 'px';
+        m.style.font = cs.font; m.style.letterSpacing = cs.letterSpacing;
+        m.textContent = text; document.body.appendChild(m);
+        const node = m.firstChild, out = []; let cur = '', last = null;
+        for (let i = 0; i < text.length; i++) {
+          if (text[i] === '\n') { out.push(cur); cur = ''; last = null; continue; }
+          const r = document.createRange(); r.setStart(node, i); r.setEnd(node, i + 1);
+          const rc = r.getClientRects(), top = rc.length ? Math.round(rc[0].top) : last;
+          if (last !== null && top !== null && top > last + 2) { out.push(cur); cur = ''; }
+          cur += text[i]; if (top !== null) last = top;
+        }
+        out.push(cur); m.remove();
+        return out;
+      } catch (_) { return null; }
+    }
+
     // ------------------------------------------------------------ marks: tick, cross, hand-drawn circle
     const MARK_LABEL = { tick: '✓ Tick', cross: '✗ Cross', circle: '◯ Circle' };
     function rng(seed) { let a = (seed >>> 0) || 1; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -855,16 +876,21 @@
         ta.addEventListener('focus', () => { state.lastFocus = ta; });
         wrap.insertBefore(ta, wrap.firstChild);
         wrap._ta = ta;
-        // native resize handle on the textarea → keep the model in sync
-        if (global.ResizeObserver) {
-          let first = true;
-          new ResizeObserver(() => {
-            if (first) { first = false; return; }
-            const r = wrap.getBoundingClientRect();
-            if (!r.width) return;
-            it.w = Math.max(20, r.width / state.scale); it.h = Math.max(it.size * 1.3, r.height / state.scale);
-          }).observe(wrap);
-        }
+        // corner handle: drag to make the box wider / narrower / taller / shorter. The model (and so the PDF) follows.
+        const grip = document.createElement('span');
+        grip.className = 'dv-grip'; grip.title = 'Drag to resize the box'; grip.setAttribute('aria-label', 'Resize text box');
+        grip.addEventListener('pointerdown', (e) => {
+          e.preventDefault(); e.stopPropagation(); select(it.id);
+          const sx = e.clientX, sy = e.clientY, ow = it.w, oh = it.h;
+          const move = (ev) => {
+            it.w = Math.max(24, ow + (ev.clientX - sx) / state.scale);
+            it.h = Math.max(it.size * 1.3, oh + (ev.clientY - sy) / state.scale);
+            place();
+          };
+          const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up); touch(); };
+          addEventListener('pointermove', move); addEventListener('pointerup', up); addEventListener('pointercancel', up);
+        });
+        wrap.appendChild(grip);
       }
       wrap.addEventListener('focusin', () => { select(it.id); if (isPhone()) setTimeout(() => { try { wrap.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (_) {} }, 320); });
       wrap.addEventListener('pointerdown', () => select(it.id));
@@ -879,8 +905,9 @@
         const p = state.pages[it.page - 1];
         const move = (ev) => {
           if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 3) moved = true;
-          it.x = Math.max(0, Math.min(p.w - it.w, ox + (ev.clientX - sx) / state.scale));
-          it.y = Math.max(0, Math.min(p.h - it.h, oy + (ev.clientY - sy) / state.scale));
+          const kx = Math.min(28, it.w), ky = Math.min(20, it.h);
+          it.x = Math.max(kx - it.w, Math.min(p.w - kx, ox + (ev.clientX - sx) / state.scale));
+          it.y = Math.max(ky - it.h, Math.min(p.h - ky, oy + (ev.clientY - sy) / state.scale));
           place();
         };
         const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up); if (moved) touch(); };
@@ -929,7 +956,7 @@
         it.w = textW; it.h = Math.ceil(size * 1.25 * (text && text.includes('\n') ? text.split('\n').length : 1)) + 4;
       }
       // keep inside the page
-      it.x = Math.max(0, Math.min(p.w - it.w, x)); it.y = Math.max(0, Math.min(p.h - it.h, y));
+      { const kx = Math.min(28, it.w), ky = Math.min(20, it.h); it.x = Math.max(kx - it.w, Math.min(p.w - kx, x)); it.y = Math.max(ky - it.h, Math.min(p.h - ky, y)); }
       state.items.push(it);
       const el = makeItemEl(it);
       p.el.querySelector('.dv-ov').appendChild(el);
@@ -1112,7 +1139,9 @@
         }
         const text = safeText(font, it.text || '');
         if (!text.trim()) return;
-        const lines = wrapLines(text, font, it.size, Math.max(10, it.w - 4));
+        const taEl = (root.querySelector('.dv-item[data-id="' + it.id + '"]') || {})._ta;
+        const seen = taEl ? screenLines(taEl, it.text || '') : null;
+        const lines = seen ? seen.map((ln) => safeText(font, ln.replace(/\s+$/, ''))) : wrapLines(text, font, it.size, Math.max(10, it.w - 6));
         lines.forEach((ln, k) => {
           if (!ln) return;
           const [px, py] = toPdf(it.x + 2, it.y + 1 + it.size * 0.93 + k * it.size * 1.2);
@@ -1122,6 +1151,8 @@
       for (const it of state.items) await drawItem(it);
       return doc.save();
     }
+
+    const exportOk = async () => !global.MWBilling || (await MWBilling.allowExport(o.ocid, o.url, o.title)); // free plan: one finished document
 
     async function withBusy(btn, label, fn) {
       const old = btn.textContent; btn.disabled = true; btn.textContent = label;
@@ -1230,6 +1261,7 @@
         const attach = form.mode.value === 'attach';
         go.disabled = true;
         try {
+          if (!(await exportOk())) return;
           if (!attach) {
             go.textContent = 'Preparing…';
             download(await buildFilledPdf(), slug(o.title) + '-filled.pdf');
@@ -1382,7 +1414,7 @@
           send.textContent = 'Send again';
           if (global.MWBilling) MWBilling.celebrate();
         } catch (err) {
-          if (err && err.status === 402 && global.MWBilling) { emailEl.hidden = true; MWBilling.openPaywall({ reason: 'doc' }); }
+          if (err && err.status === 402 && global.MWBilling) { emailEl.hidden = true; MWBilling.openPaywall({ reason: (err.data && err.data.reason) || 'doc' }); }
           else emailMsg(err.message || 'Could not send the email.', 'err');
           send.textContent = 'Send email';
         } finally { send.disabled = false; }
@@ -1424,6 +1456,7 @@
       emailEl.querySelector('.dv-own').hidden = false;
     }
     async function ownDownload(btn) {
+      if (!(await exportOk())) return;
       await withBusy(btn, 'Preparing…', async () => {
         try { download(await buildFilledPdf(), slug(o.title) + '-filled.pdf'); } catch (err) { emailMsg(err.message, 'err'); }
       });

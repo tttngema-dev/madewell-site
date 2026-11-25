@@ -6,7 +6,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { supabase } from '../supabase.js';
 import { adminRouter } from './admin.js';
 import { buildSubscription, cancelPayfastSubscription } from '../payfast.js';
-import { PRICE, getSubscription, getTrialDoc, isProRow, checkDocAccess, checkDownload, getFreeDownload, PRO_REQUIRED } from '../entitlement.js';
+import { PRICE, getSubscription, getTrialDoc, isProRow, checkDocAccess, checkDownload, getFreeDownload, peekExport, recordExport, getFreeExport, PRO_REQUIRED } from '../entitlement.js';
 
 export const billingRouter = Router();
 
@@ -32,9 +32,10 @@ billingRouter.get('/billing/status', requireAuth, async (req, res) => {
     const pro = isProRow(sub);
     const trial = await getTrialDoc(req.user.id);
     const dl = pro ? null : await getFreeDownload(req.user.id);
+    const ex = pro ? null : await getFreeExport(req.user.id);
     const out = {
       ok: true, price: PRICE, pro, subscription: publicSub(sub),
-      download: { used: !!dl },
+      download: { used: !!dl }, export: { used: !!ex },
       trial: { used: !!trial, doc: trial ? { ocid: trial.ocid, doc_url: trial.doc_url, doc_title: trial.doc_title } : null },
     };
     if (req.query.ocid && req.query.doc_url) {
@@ -52,12 +53,27 @@ billingRouter.post('/billing/download', requireAuth, async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.doc_url) return res.status(400).json({ ok: false, error: 'Missing document.' });
-    const r = await checkDownload(req.user.id, b.ocid, b.doc_url, b.title);
+    const r = await checkDownload(req.user.id, b.ocid, b.doc_url, b.title, { claim: !!b.claim });
     if (!r.allowed) return res.status(402).json({ ...PRO_REQUIRED, reason: 'download', error: 'Your free download is used. Go Pro to download more tender documents.' });
-    res.json({ ok: true, allowed: true });
+    res.json({ ok: true, allowed: true, claimed: !!b.claim });
   } catch (err) {
     console.error('[billing download]', err.message);
     res.json({ ok: true, allowed: true }); // never block a download because of our own hiccup
+  }
+});
+
+// POST /api/billing/export  { ocid, doc_url }  -> the finished (filled-in) PDF is about to be downloaded: one per free person
+billingRouter.post('/billing/export', requireAuth, async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.doc_url) return res.status(400).json({ ok: false, error: 'Missing document.' });
+    const r = await peekExport(req.user.id, b.ocid, b.doc_url);
+    if (!r.allowed) return res.status(402).json({ ...PRO_REQUIRED, reason: r.reason === 'doc' ? 'doc' : 'export', error: 'Your free filled-in document has been used. Go Pro to download or email more.' });
+    await recordExport(req.user.id, b.ocid, b.doc_url, 'download');
+    res.json({ ok: true, allowed: true });
+  } catch (err) {
+    console.error('[billing export]', err.message);
+    res.json({ ok: true, allowed: true }); // never block because of our own hiccup
   }
 });
 

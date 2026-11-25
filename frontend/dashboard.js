@@ -134,14 +134,13 @@
       row.innerHTML = `<div class="doc-info"><strong>${esc(d.title)}</strong><span>${meta}</span></div>` +
         (can
           ? `<button type="button" class="btn small ${lock ? 'dv-lock' : ''}">${lock ? MWBilling.crown('on-gold') + ' ' : ''}${e ? 'Continue filling in' : 'Open &amp; fill in'}</button>`
-          : `<a class="btn small ghost-btn" data-dl href="${esc(d.url)}" target="_blank" rel="noopener">Download</a>`);
+          : `<a class="btn small ghost-btn" data-dl href="#download" role="button">Download</a>`);
       const b = row.querySelector('button');
       if (b) b.addEventListener('click', () => openDoc(item, d));
       const dl = row.querySelector('a[data-dl]');
       if (dl) dl.addEventListener('click', async (ev) => {
-        if (!window.MWBilling) return;
         ev.preventDefault();
-        if (!(await MWBilling.allowDownload(item.ocid, d.url, d.title))) return; // free plan: one download
+        if (window.MWBilling && !(await MWBilling.allowDownload(item.ocid, d.url, d.title))) return; // free plan: one download
         const go = document.createElement('a'); go.href = d.url; go.target = '_blank'; go.rel = 'noopener'; document.body.appendChild(go); go.click(); go.remove();
       });
       box.appendChild(row);

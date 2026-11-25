@@ -222,7 +222,7 @@
         return canPreview(d)
           ? '<li class="doc-row"><button type="button" class="doc-open" data-doc="' + i + '">' + inner +
             '<span class="doc-cta">Preview</span></button></li>'
-          : '<li class="doc-row"><a class="doc-open" data-dl="' + i + '" href="' + esc(d.url) + '" target="_blank" rel="noopener">' + inner +
+          : '<li class="doc-row"><a class="doc-open" data-dl="' + i + '" href="#download" role="button">' + inner +
             '<span class="doc-cta">Download</span></a></li>';
       }).join('') + '</ul>';
   }
@@ -290,10 +290,10 @@
     if (tab === 'documents') {
       panel.querySelectorAll('button.doc-open').forEach((b) => b.addEventListener('click', () => openPreview(t, +b.dataset.doc)));
       panel.querySelectorAll('a.doc-open[data-dl]').forEach((a) => a.addEventListener('click', async (e) => {
-        if (!window.MWBilling) return;
         e.preventDefault();
         const d = (t.documents || [])[+a.dataset.dl];
-        if (!d || !(await MWBilling.allowDownload(t.ocid, d.url, d.title))) return; // free plan: one download
+        if (!d) return;
+        if (window.MWBilling && !(await MWBilling.allowDownload(t.ocid, d.url, d.title))) return; // free plan: one download
         const go = document.createElement('a'); go.href = d.url; go.target = '_blank'; go.rel = 'noopener'; document.body.appendChild(go); go.click(); go.remove();
       }));
     }
