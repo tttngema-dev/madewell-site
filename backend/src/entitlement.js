@@ -56,59 +56,66 @@ export async function checkDocAccess(userId, ocid, docUrl) {
 }
 
 /**
- * Free plan: ONE tender document download in total. Exactly once: not the same document again, not another one.
- * Pro: unlimited. { claim: true } only records a download that a signed-out visitor already made in their browser
- * (so signing up does not give a second free one). If we can't tell (database hiccup, SQL not run yet) we let it through and log it.
+ * FREE PLAN: ONE download in total, for the whole site. A blank tender document, OR the finished filled-in PDF, OR emailing it.
+ * Exactly once: not the same document again, not another one. Pro: unlimited. Filling in and previewing stay free.
+ *
+ * If we cannot check (database or SQL problem) a free person is REFUSED, not waved through: a missing table must never
+ * turn into unlimited free downloads. (If we cannot even tell whether someone is Pro, we let them through.)
  */
+async function proStatus(userId) {
+  try { return { pro: isProRow(await getSubscription(userId)), known: true }; }
+  catch (err) { console.error('[entitlement] cannot read subscriptions:', err.message); return { pro: false, known: false }; }
+}
+async function usedFreeDownload(userId) {
+  const a = await supabase.from('free_downloads').select('user_id').eq('user_id', userId).maybeSingle();
+  if (a.error) throw a.error;
+  if (a.data) return true;
+  const b = await supabase.from('free_exports').select('user_id').eq('user_id', userId).maybeSingle(); // v15 table: counts too
+  return !!(b.data && !b.error);
+}
+async function useFreeDownload(userId, ocid, docUrl, title) {
+  const ins = await supabase.from('free_downloads').insert({ user_id: userId, ocid: String(ocid || ''), doc_url: String(docUrl || ''), doc_title: String(title || '').slice(0, 200) || null });
+  if (ins.error && ins.error.code !== '23505') throw ins.error;
+  return !ins.error; // false = someone else just used it a moment ago
+}
+
 export async function checkDownload(userId, ocid, docUrl, title, opts = {}) {
+  const st = await proStatus(userId);
+  if (st.pro) return { allowed: true, pro: true };
+  if (!st.known) return { allowed: true, unknown: true };
   try {
-    const sub = await getSubscription(userId);
-    if (isProRow(sub)) return { allowed: true, pro: true };
-    const { data, error } = await supabase.from('free_downloads').select('ocid').eq('user_id', userId).maybeSingle();
-    if (error) throw error;
-    if (data) return { allowed: !!opts.claim, used: true };   // already used: a claim is simply "noted", a real download is refused
-    const ins = await supabase.from('free_downloads').insert({ user_id: userId, ocid: String(ocid || ''), doc_url: String(docUrl || ''), doc_title: String(title || '').slice(0, 200) || null });
-    if (ins.error && ins.error.code !== '23505') throw ins.error;
-    return { allowed: true, first: true };
+    if (await usedFreeDownload(userId)) return { allowed: !!opts.claim, used: true };  // a "claim" (a visitor who signs up) is just noted
+    return { allowed: await useFreeDownload(userId, ocid, docUrl, title), first: true };
   } catch (err) {
-    console.error('[entitlement] download check failed, allowing:', err.message);
-    return { allowed: true, unknown: true };
+    console.error('[entitlement] DOWNLOAD LIMIT CHECK FAILED (did you run backend/sql/run_this_once.sql?):', err.message);
+    return { allowed: false, error: true };
   }
 }
 
-/**
- * Free plan: ONE finished filled-in document (downloaded OR emailed), and only for their one free fill-in document.
- * peekExport() asks; recordExport() uses it up (after the email was really sent, or when the download is handed over).
- */
+/** The finished (filled-in) PDF, downloaded or emailed, counts as that one free download. peekExport asks, recordExport uses it up. */
 export async function peekExport(userId, ocid, docUrl) {
+  const st = await proStatus(userId);
+  if (st.pro) return { allowed: true, pro: true };
+  if (!st.known) return { allowed: true, unknown: true };
   try {
-    const sub = await getSubscription(userId);
-    if (isProRow(sub)) return { allowed: true, pro: true };
     const access = await checkDocAccess(userId, ocid, docUrl);
     if (!access.allowed) return { allowed: false, reason: 'doc' };
-    const { data, error } = await supabase.from('free_exports').select('user_id').eq('user_id', userId).maybeSingle();
-    if (error) throw error;
-    return { allowed: !data, reason: data ? 'export' : null };
+    return { allowed: !(await usedFreeDownload(userId)), reason: 'export' };
   } catch (err) {
-    console.error('[entitlement] export check failed, allowing:', err.message);
-    return { allowed: true, unknown: true };
+    console.error('[entitlement] EXPORT LIMIT CHECK FAILED (did you run backend/sql/run_this_once.sql?):', err.message);
+    return { allowed: false, error: true };
   }
 }
 export async function recordExport(userId, ocid, docUrl, kind) {
-  try {
-    const sub = await getSubscription(userId);
-    if (isProRow(sub)) return;
-    const r = await supabase.from('free_exports').insert({ user_id: userId, ocid: String(ocid || ''), doc_url: String(docUrl || ''), kind: kind || null });
-    if (r.error && r.error.code !== '23505') throw r.error;
-  } catch (err) { console.error('[entitlement] could not record export:', err.message); }
+  const st = await proStatus(userId);
+  if (st.pro || !st.known) return true;
+  try { return await useFreeDownload(userId, ocid, docUrl, 'finished document (' + (kind || 'download') + ')'); }
+  catch (err) { console.error('[entitlement] could not record the free download:', err.message); return false; }
 }
-export async function getFreeExport(userId) {
-  try { const { data } = await supabase.from('free_exports').select('kind').eq('user_id', userId).maybeSingle(); return data || null; }
-  catch (_) { return null; }
-}
+export async function getFreeExport(userId) { return getFreeDownload(userId); }
 
 export async function getFreeDownload(userId) {
-  try { const { data } = await supabase.from('free_downloads').select('ocid, doc_url, doc_title').eq('user_id', userId).maybeSingle(); return data || null; }
+  try { return (await usedFreeDownload(userId)) ? { used: true } : null; }
   catch (_) { return null; }
 }
 

@@ -35,7 +35,7 @@ billingRouter.get('/billing/status', requireAuth, async (req, res) => {
     const ex = pro ? null : await getFreeExport(req.user.id);
     const out = {
       ok: true, price: PRICE, pro, subscription: publicSub(sub),
-      download: { used: !!dl }, export: { used: !!ex },
+      download: { used: !!(dl || ex) }, export: { used: !!(dl || ex) },
       trial: { used: !!trial, doc: trial ? { ocid: trial.ocid, doc_url: trial.doc_url, doc_title: trial.doc_title } : null },
     };
     if (req.query.ocid && req.query.doc_url) {
@@ -54,11 +54,12 @@ billingRouter.post('/billing/download', requireAuth, async (req, res) => {
     const b = req.body || {};
     if (!b.doc_url) return res.status(400).json({ ok: false, error: 'Missing document.' });
     const r = await checkDownload(req.user.id, b.ocid, b.doc_url, b.title, { claim: !!b.claim });
+    if (r.error) return res.status(503).json({ ok: false, error: 'Downloads are temporarily unavailable. Please try again shortly.' });
     if (!r.allowed) return res.status(402).json({ ...PRO_REQUIRED, reason: 'download', error: 'Your free download is used. Go Pro to download more tender documents.' });
     res.json({ ok: true, allowed: true, claimed: !!b.claim });
   } catch (err) {
     console.error('[billing download]', err.message);
-    res.json({ ok: true, allowed: true }); // never block a download because of our own hiccup
+    res.status(503).json({ ok: false, error: 'Downloads are temporarily unavailable. Please try again shortly.' });
   }
 });
 
@@ -68,12 +69,14 @@ billingRouter.post('/billing/export', requireAuth, async (req, res) => {
     const b = req.body || {};
     if (!b.doc_url) return res.status(400).json({ ok: false, error: 'Missing document.' });
     const r = await peekExport(req.user.id, b.ocid, b.doc_url);
-    if (!r.allowed) return res.status(402).json({ ...PRO_REQUIRED, reason: r.reason === 'doc' ? 'doc' : 'export', error: 'Your free filled-in document has been used. Go Pro to download or email more.' });
-    await recordExport(req.user.id, b.ocid, b.doc_url, 'download');
+    if (r.error) return res.status(503).json({ ok: false, error: 'Downloads are temporarily unavailable. Please try again shortly.' });
+    if (!r.allowed) return res.status(402).json({ ...PRO_REQUIRED, reason: r.reason === 'doc' ? 'doc' : 'export', error: 'Your free download has been used. Go Pro to download or email more.' });
+    const recorded = await recordExport(req.user.id, b.ocid, b.doc_url, 'download');
+    if (!recorded) return res.status(402).json({ ...PRO_REQUIRED, reason: 'export', error: 'Your free download has been used. Go Pro to download or email more.' });
     res.json({ ok: true, allowed: true });
   } catch (err) {
     console.error('[billing export]', err.message);
-    res.json({ ok: true, allowed: true }); // never block because of our own hiccup
+    res.status(503).json({ ok: false, error: 'Downloads are temporarily unavailable. Please try again shortly.' });
   }
 });
 
@@ -136,8 +139,13 @@ adminRouter.get('/admin/pro', async (_req, res) => {
     const { data: subs, error: e2 } = await supabase.from('subscriptions').select('*').order('updated_at', { ascending: false }).limit(500);
     if (e2) throw e2;
     const active = (subs || []).filter((r) => isProRow(r));
+    const setup = [];
+    for (const [t, col] of [['subscriptions', 'user_id'], ['promo_codes', 'code'], ['free_downloads', 'user_id'], ['free_exports', 'user_id'], ['company_profiles', 'csd_number'], ['company_profiles', 'quick_fills']]) {
+      const r = await supabase.from(t).select(col).limit(1);
+      if (r.error) setup.push(t + (col !== 'user_id' && col !== 'code' ? '.' + col : ''));
+    }
     res.json({
-      ok: true, price: PRICE,
+      ok: true, price: PRICE, setup_missing: setup,
       counts: { paying: active.filter((r) => r.source === 'payfast' && r.status === 'active').length, promo: active.filter((r) => r.source === 'promo').length, cancelling: active.filter((r) => r.status === 'cancelled').length },
       mrr: active.filter((r) => r.source === 'payfast' && r.status === 'active').length * PRICE,
       codes: codes || [],

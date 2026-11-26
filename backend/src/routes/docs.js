@@ -139,7 +139,8 @@ router.post('/account/docs/email', requireAuth, async (req, res) => {
     const access = await checkDocAccess(req.user.id, b.ocid, b.doc_url);
     if (!access.allowed || (!access.pro && !b.ocid)) return res.status(402).json({ ...PRO_REQUIRED, reason: 'doc', error: 'Emailing documents is part of Made Well Pro.' });
     const ex = await peekExport(req.user.id, b.ocid, b.doc_url);
-    if (!ex.allowed) return res.status(402).json({ ...PRO_REQUIRED, reason: 'export', error: 'Your free filled-in document has been used. Go Pro to email more.' });
+    if (ex.error) return res.status(503).json({ ok: false, error: 'Emailing is temporarily unavailable. Please try again shortly.' });
+    if (!ex.allowed) return res.status(402).json({ ...PRO_REQUIRED, reason: ex.reason === 'doc' ? 'doc' : 'export', error: 'Your free download has been used. Go Pro to email more.' });
     const to = parseRecipients(b.to);
     if (!to.length) return res.status(400).json({ ok: false, error: 'Enter an email address to send to.' });
     if (to.length > 5) return res.status(400).json({ ok: false, error: 'You can send to at most 5 addresses at a time.' });

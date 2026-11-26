@@ -47,16 +47,38 @@ router.put('/account/profile', requireAuth, async (req, res) => {
       cidb_number: body.cidb_number ?? null,
       updated_at: new Date().toISOString(),
     };
-    const { data, error } = await supabase
-      .from('company_profiles')
-      .upsert(row, { onConflict: 'id' })
-      .select()
-      .single();
+    // newer columns: only written when the form sent them, so older forms never wipe them
+    const extra = {};
+    if (body.csd_number !== undefined) extra.csd_number = String(body.csd_number || '').trim().slice(0, 40) || null;
+    let { data, error } = await supabase.from('company_profiles').upsert({ ...row, ...extra }, { onConflict: 'id' }).select().single();
+    let needsSql = false;
+    if (error && /csd_number|quick_fills/i.test(error.message || '')) { // SQL not run yet: save everything else rather than fail
+      needsSql = true;
+      ({ data, error } = await supabase.from('company_profiles').upsert(row, { onConflict: 'id' }).select().single());
+    }
     if (error) throw error;
-    res.json({ ok: true, profile: data });
+    res.json({ ok: true, profile: data, needs_sql: needsSql });
   } catch (err) {
     console.error('[profile put]', err.message);
     res.status(500).json({ ok: false, error: err.message || 'Could not save profile' });
+  }
+});
+
+// Quick-fill items people add themselves (a label and a value), kept for good
+router.put('/account/quickfills', requireAuth, async (req, res) => {
+  try {
+    const items = (Array.isArray(req.body && req.body.items) ? req.body.items : []).slice(0, 40)
+      .map((x) => ({ id: String((x && x.id) || Math.random().toString(36).slice(2, 10)).slice(0, 20), label: String((x && x.label) || '').trim().slice(0, 40), value: String((x && x.value) || '').trim().slice(0, 400) }))
+      .filter((x) => x.label && x.value);
+    const { error } = await supabase.from('company_profiles').upsert({ id: req.user.id, quick_fills: items, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+    if (error) {
+      if (/quick_fills/i.test(error.message || '')) return res.status(500).json({ ok: false, error: 'Quick-fill needs one more setup step. Run backend/sql/run_this_once.sql in Supabase.' });
+      throw error;
+    }
+    res.json({ ok: true, items });
+  } catch (err) {
+    console.error('[quickfills put]', err.message);
+    res.status(500).json({ ok: false, error: 'Could not save that. Please try again.' });
   }
 });
 
