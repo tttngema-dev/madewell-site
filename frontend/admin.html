@@ -96,7 +96,7 @@ function render(s) {
 }
 async function loadPro() {
   try {
-    const p = await api('/api/admin/pro'); $('#pro-note').textContent = '';
+    const p = await api('/api/admin/pro'); const miss = p.setup_missing || []; $('#pro-note').style.color = miss.length ? '#ff9d9d' : ''; $('#pro-note').textContent = miss.length ? 'SETUP INCOMPLETE: missing ' + miss.join(', ') + '. Run backend/sql/run_this_once.sql in the Supabase SQL editor. Until you do, free downloads are blocked for safety.' : '';
     $('#pro-cards').innerHTML = [[p.counts.paying, 'Paying R' + p.price + '/month'], ['R' + p.mrr, 'Monthly income'], [p.counts.promo, 'Free with a code'], [p.counts.cancelling, 'Not renewing']].map(([n, l]) => `<div class="card"><b>${esc(n)}</b><span>${esc(l)}</span></div>`).join('');
     $('#promo-rows').innerHTML = p.codes.map((c) => `<tr class="${c.active ? '' : 'off'}"><td><b>${esc(c.code)}</b></td><td>${c.days ? c.days + ' days' : 'No end date'}</td><td>${c.uses}${c.max_uses ? ' / ' + c.max_uses : ''}</td><td>${c.expires_at ? new Date(c.expires_at).toLocaleDateString() : 'Never'}</td><td>${esc(c.note || '')}</td><td><button class="btn small" data-code="${esc(c.code)}" data-on="${c.active ? '0' : '1'}">${c.active ? 'Turn off' : 'Turn on'}</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted">No codes yet. Make one above.</td></tr>';
     $('#pro-people').innerHTML = p.people.map((x) => `<tr><td>${esc(x.email || '')}</td><td>${x.source === 'promo' ? 'Code ' + esc(x.code || '') : 'Pays monthly'}</td><td>${x.pro ? (x.status === 'cancelled' ? 'Ends, not renewing' : 'Active') : 'Ended'}</td><td>${x.until ? new Date(x.until).toLocaleDateString() : 'No end date'}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">Nobody yet.</td></tr>';

@@ -78,12 +78,12 @@
   const COPY = {
     doc: { eye: 'Your free document is done', h: 'Loved how fast that was? Do it for every tender.', sub: 'You’ve seen how it works. With Pro you can fill in, stamp, sign, attach and send every tender you chase, without the printing, scanning and rework.' },
     alerts: { eye: 'Pro feature', h: 'Let the tenders come to you', sub: 'Every morning we email you the best new tenders that match your business: up to 10 a day, never the same one twice. You’ll hear about them while others are still searching.' },
-    download: { eye: 'Your free download is used', h: 'Need more tender documents?', sub: 'You’ve used your free download. With Pro you can download every tender document you need, fill them in, and get daily tender alerts.' },
-    export: { eye: 'Your free finished document is used', h: 'Need to download or email more?', sub: 'You have used your free filled-in document. With Pro you can fill in, download and email as many tender documents as you need.' },
+    download: { eye: 'Your free download is used', h: 'Need to download more?', sub: 'Free accounts get one download in total, and yours is used. With Pro you can download and email as many tender documents as you need, blank or filled in.' },
+    export: { eye: 'Your free download is used', h: 'Need to download more?', sub: 'Free accounts get one download in total, and yours is used. With Pro you can download and email as many tender documents as you need, blank or filled in.' },
     upgrade: { eye: 'Made Well Pro', h: 'Win more tenders with less paperwork', sub: 'Stop retyping the same company details into every form. Fill it in once, and every tender becomes a few taps.' },
   };
   const BENEFITS = [
-    '<b>Download every tender document</b>, as many as you need',
+    '<b>Download and email as many documents as you need</b>, blank or filled in',
     '<b>Fill in unlimited tender documents</b>: type, tick, date, stamp and sign on your phone or computer',
     '<b>Attach your company documents</b>: CSD, tax, B-BBEE and more, merged into one ready-to-submit PDF',
     '<b>Email the finished PDF</b> straight to the buyer from the site',
@@ -113,7 +113,7 @@
       '<div class="pw-crown">' + CROWN() + '</div>' +
       '<p class="pw-eyebrow">' + esc(c.eye) + '</p><h2 id="pw-title">' + esc(c.h) + '</h2><p class="pw-sub">' + esc(c.sub) + '</p>' +
       '<ul class="pw-list">' + BENEFITS.map((b) => '<li><span>' + b + '</span></li>').join('') + '</ul>' +
-      '<p class="pw-free"><b>Still free:</b> browsing tenders and previewing every document, plus your first download and your first document to fill in. Everything you’ve filled in and uploaded stays safe in your account.</p>' +
+      '<p class="pw-free"><b>Still free:</b> browsing tenders, previewing every document and filling in a document, plus one free download in total. Everything you’ve filled in and uploaded stays safe in your account.</p>' +
       '<div class="pw-price"><span class="pw-amt">' + esc(money(price)) + '</span><span class="pw-per">per month</span></div>' +
       '<p class="pw-day">That’s about ' + esc(perDay(price)) + ' a day. Win one tender and Pro has paid for itself many times over.</p>' +
       '<button type="button" class="btn pw-go">' + CROWN('on-gold') + (guest ? ' Create a free account to go Pro' : ' Go Pro · ' + esc(money(price)) + '/month') + '</button>' +
@@ -158,7 +158,12 @@
       el.querySelector('.pw-go').focus();
     });
   }
-  const markUsed = (s, what) => { cache = Promise.resolve(Object.assign({}, s, { [what]: { used: true } })); };
+  const markUsed = (s) => { cache = Promise.resolve(Object.assign({}, s, { download: { used: true }, export: { used: true } })); };
+  const say = (m) => { try { document.querySelectorAll('.toast-soon').forEach((x) => x.remove()); const n = document.createElement('div'); n.className = 'toast-soon'; n.setAttribute('role', 'status'); n.textContent = m; document.body.appendChild(n); setTimeout(() => n.remove(), 3500); } catch (_) {} };
+  // a signed-out visitor's one download is remembered in two places, so private browsing cannot hide it
+  const GKEY = 'mw:dl1';
+  const guestUsed = () => { try { if (localStorage.getItem(GKEY)) return true; } catch (_) {} return /(?:^|; )mw_dl1=1/.test(document.cookie); };
+  const guestMark = (v) => { let ok = false; try { localStorage.setItem(GKEY, v); ok = true; } catch (_) {} try { document.cookie = 'mw_dl1=1; max-age=31536000; path=/; SameSite=Lax'; ok = ok || /mw_dl1=1/.test(document.cookie); } catch (_) {} return ok; };
 
   /**
    * Free plan: ONE tender document download, once. Not the same document again, not another one. Pro: unlimited.
@@ -167,28 +172,27 @@
   async function allowDownload(ocid, url, title) {
     let user = null;
     try { user = g.MWAuth ? await MWAuth.getUser() : null; } catch (_) {}
-    const ask = () => confirmUse({ h: 'Use your free download?', text: 'Free accounts can download one tender document. This will be it. You can still preview every document, and Pro lets you download as many as you need.', yes: 'Download it' });
+    const ask = () => confirmUse({ h: 'Use your free download?', text: 'Free accounts get one download in total, for the whole site. This will be it, so choose the document you really need. You can still preview and fill in documents, and Pro lets you download and email as many as you need.', yes: 'Download it' });
     if (user) {
-      let s = null; try { s = await status(); } catch (_) {}
+      let s = null; try { s = await status(true); } catch (_) {}
       if (s && s.pro) return true;
       if (s && s.download && s.download.used) { openPaywall({ reason: 'download' }); return false; }
       if (!(await ask())) return false;
       try {
         const r = await MWAuth.api('/api/billing/download', { method: 'POST', body: JSON.stringify({ ocid: ocid || '', doc_url: url, title: title || '' }) });
         if (r.allowed === false) { openPaywall({ reason: 'download' }); return false; }
-        if (s) markUsed(s, 'download');
+        if (s) markUsed(s); else changed();
         return true;
       } catch (err) {
-        if (err && err.status === 402) { openPaywall({ reason: 'download' }); return false; }
-        return true; // our own hiccup must never stop a download
+        if (err && err.status === 402) { changed(); openPaywall({ reason: 'download' }); return false; }
+        say((err && err.status ? err.message : 'We could not check your download allowance. Check your connection and try again.') || 'Please try again.');
+        return false; // when we cannot check, nothing is handed out
       }
     }
-    try { // not signed in: this browser remembers its one free download
-      if (localStorage.getItem('mw:dl1')) { openPaywall({ reason: 'download' }); return false; }
-      if (!(await ask())) return false;
-      localStorage.setItem('mw:dl1', JSON.stringify({ ocid: ocid || '', url }));
-      return true;
-    } catch (_) { return true; }
+    if (guestUsed()) { openPaywall({ reason: 'download' }); return false; }
+    if (!(await ask())) return false;
+    if (!guestMark(JSON.stringify({ ocid: ocid || '', url }))) { openPaywall({ reason: 'download' }); return false; } // a browser that remembers nothing must sign in
+    return true;
   }
 
   /**
@@ -196,31 +200,42 @@
    * true = go ahead. false = the paywall has been shown (or they cancelled).
    */
   async function allowExport(ocid, url, title) {
-    let s = null; try { s = await status(); } catch (_) {}
+    let s = null; try { s = await status(true); } catch (_) {}
     if (s && s.pro) return true;
     if (s && s.export && s.export.used) { openPaywall({ reason: 'export' }); return false; }
-    if (!(await confirmUse({ h: 'Use your free finished document?', text: 'Free accounts can download or email one finished tender document. This will be it. You can keep editing, and Pro lets you download and email as many as you need.', yes: 'Continue' }))) return false;
+    if (!(await confirmUse({ h: 'Use your free download?', text: 'Free accounts get one download in total, for the whole site, and this finished document will use it. You can keep editing it and fill in other documents. Pro lets you download and email as many as you need.', yes: 'Continue' }))) return false;
     try {
       const r = await MWAuth.api('/api/billing/export', { method: 'POST', body: JSON.stringify({ ocid: ocid || '', doc_url: url || '', title: title || '' }) });
       if (r.allowed === false) { openPaywall({ reason: 'export' }); return false; }
-      if (s) markUsed(s, 'export');
+      if (s) markUsed(s); else changed();
       return true;
     } catch (err) {
-      if (err && err.status === 402) { openPaywall({ reason: (err.data && err.data.reason) || 'export' }); return false; }
-      return true; // our own hiccup must never stop someone
+      if (err && err.status === 402) { changed(); openPaywall({ reason: 'export' }); return false; }
+      say((err && err.status ? err.message : 'We could not check your download allowance. Check your connection and try again.') || 'Please try again.');
+      return false; // when we cannot check, nothing is handed out
     }
+  }
+
+  /** Emailing a finished document uses the same one free download. The server records it only after the email really goes out. */
+  async function confirmEmailUse() {
+    let s = null; try { s = await status(true); } catch (_) {}
+    if (s && s.pro) return true;
+    if (s && s.export && s.export.used) { openPaywall({ reason: 'export' }); return false; }
+    return confirmUse({ h: 'Use your free download?', text: 'Free accounts get one download in total, and emailing this finished document will use it. Pro lets you download and email as many as you need.', yes: 'Send it' });
   }
 
   // Someone who downloaded their one free document before signing up: carry that over to their account (no second free one)
   (async function claimGuestDownload() {
     try {
-      const raw = localStorage.getItem('mw:dl1');
+      let raw = null; try { raw = localStorage.getItem('mw:dl1'); } catch (_) {}
+      if (!raw && guestUsed()) raw = '{}';
       if (!raw || !g.MWAuth) return;
       const u = await MWAuth.getUser();
       if (!u) return;
       const x = JSON.parse(raw);
-      await MWAuth.api('/api/billing/download', { method: 'POST', body: JSON.stringify({ ocid: x.ocid || '', doc_url: x.url || 'unknown', title: '', claim: true }) });
-      localStorage.removeItem('mw:dl1'); cache = null;
+      await MWAuth.api('/api/billing/download', { method: 'POST', body: JSON.stringify({ ocid: x.ocid || '', doc_url: x.url || 'carried-over', title: '', claim: true }) });
+      try { localStorage.removeItem('mw:dl1'); } catch (_) {}
+      document.cookie = 'mw_dl1=; max-age=0; path=/'; cache = null;
     } catch (_) { /* try again next page */ }
   })();
 
@@ -332,5 +347,5 @@
     toast('Your payment is still being confirmed. Pro will switch on by itself in a minute. Refresh this page shortly.');
   }
 
-  g.MWBilling = { status, changed, locked, isTrialDoc, guardDoc, allowDownload, allowExport, openPaywall, celebrate, mountPlanCard, syncNav, handleReturn, crown: CROWN, promoBox };
+  g.MWBilling = { status, changed, locked, isTrialDoc, guardDoc, allowDownload, allowExport, confirmEmailUse, openPaywall, celebrate, mountPlanCard, syncNav, handleReturn, crown: CROWN, promoBox };
 })(window);

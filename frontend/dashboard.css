@@ -255,3 +255,8 @@
   .dash-tabs .tab-meter { display: none; }
   .dash-tabs .mw-crown { width: 0.95em; height: 0.95em; }
 }
+
+/* your own quick-fill items */
+.qf-list { display: grid; gap: .5rem; margin-bottom: 1rem; }
+.qf-row { display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: .6rem .85rem; border: 1px solid var(--line); border-radius: 10px; background: var(--stage); word-break: break-word; }
+.qf-row .linkish { flex: none; }

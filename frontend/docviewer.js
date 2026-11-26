@@ -705,6 +705,21 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden) sweepSoon(100); });
 
 
+    // Handwriting: tender forms are traditionally filled in by hand, so text boxes use Indie Flower (a human-looking hand).
+    const HAND = 1.12; // Indie Flower looks smaller than Helvetica at the same size, so it is drawn a little bigger
+    const INK = '#0a0a20';
+    function handFontReady() {
+      try {
+        if (!document.getElementById('mw-hand-font')) {
+          const l = document.createElement('link'); l.id = 'mw-hand-font'; l.rel = 'stylesheet'; l.href = 'https://fonts.googleapis.com/css2?family=Indie+Flower&display=swap';
+          document.head.appendChild(l);
+        }
+        const wait = document.fonts && document.fonts.load ? document.fonts.load('20px "Indie Flower"', 'ABCabc0123') : Promise.resolve();
+        return Promise.race([wait, new Promise((r) => setTimeout(r, 4000))]).catch(() => {});
+      } catch (_) { return Promise.resolve(); }
+    }
+    if (editable) handFontReady();
+
     // The line breaks the person sees in the text box, measured from the browser itself.
     function screenLines(ta, text) {
       try {
@@ -724,6 +739,26 @@
         out.push(cur); m.remove();
         return out;
       } catch (_) { return null; }
+    }
+
+    // A transparent picture of the text box's lines, at 4x for sharp printing. Uses the same font stack as the screen, so it always matches.
+    async function handTextImage(it, ta, lines) {
+      const S = 4, fs = it.size * HAND, lh = fs * 1.25, padX = 3, padY = 2;
+      const heightPt = padY * 2 + lh * lines.length;
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.ceil(it.w * S)); c.height = Math.max(1, Math.ceil(heightPt * S));
+      if (c.width * c.height > 40e6) return null;
+      const ctx = c.getContext('2d'); if (!ctx) return null;
+      ctx.scale(S, S);
+      ctx.font = fs + 'px ' + (getComputedStyle(ta).fontFamily || 'cursive');
+      ctx.fillStyle = INK; ctx.textBaseline = 'alphabetic';
+      const m = ctx.measureText('Mg');
+      const asc = m.fontBoundingBoxAscent != null ? m.fontBoundingBoxAscent : fs * 0.82, desc = m.fontBoundingBoxDescent != null ? m.fontBoundingBoxDescent : fs * 0.25;
+      const base = (lh - (asc + desc)) / 2 + asc; // how a browser centres a line of text in its line box
+      lines.forEach((ln, k) => { const t = ln.replace(/\s+$/, ''); if (t) ctx.fillText(t, padX, padY + k * lh + base); });
+      const blob = await new Promise((res) => c.toBlob(res, 'image/png'));
+      if (!blob) return null;
+      return { bytes: new Uint8Array(await blob.arrayBuffer()), heightPt };
     }
 
     // ------------------------------------------------------------ marks: tick, cross, hand-drawn circle
@@ -866,7 +901,7 @@
         const ta = document.createElement('textarea');
         ta.value = it.text || '';
         ta.spellcheck = false;
-        ta.style.fontSize = it.size * s + 'px';
+        ta.style.fontSize = it.size * HAND * s + 'px';
         ta.setAttribute('aria-label', 'Text box');
         ta.addEventListener('input', () => {
           it.text = ta.value;
@@ -953,7 +988,7 @@
       } else if (type === 'tick') { it.mark = state.mark; it.seed = Math.floor(Math.random() * 1e9); const dm = markDims(it.mark, size); it.w = dm.w; it.h = dm.h; }
       else {
         const textW = text ? Math.min(p.w - 20, Math.max(80, text.length * size * 0.55 + 12)) : 150;
-        it.w = textW; it.h = Math.ceil(size * 1.25 * (text && text.includes('\n') ? text.split('\n').length : 1)) + 4;
+        it.w = textW; it.h = Math.ceil(size * HAND * 1.25 * (text && text.includes('\n') ? text.split('\n').length : 1)) + 4;
       }
       // keep inside the page
       { const kx = Math.min(28, it.w), ky = Math.min(20, it.h); it.x = Math.max(kx - it.w, Math.min(p.w - kx, x)); it.y = Math.max(ky - it.h, Math.min(p.h - ky, y)); }
@@ -1031,15 +1066,16 @@
       const addr = [prof.address_line1, prof.address_line2, prof.city, prof.province, prof.postal_code].filter(Boolean).join(', ');
       const chips = [
         ['Registered name', prof.registered_name], ['Trading name', prof.trading_name],
-        ['Registration no.', prof.cipc_number], ['Tax number', prof.tax_number], ['VAT number', prof.vat_number],
+        ['Registration no.', prof.cipc_number], ['CSD no. (MAAA)', prof.csd_number], ['Tax number', prof.tax_number], ['VAT number', prof.vat_number],
         ['Address', addr], ['Phone', prof.contact_phone], ['Email', prof.contact_email || email],
         ['B-BBEE level', prof.bbbee_level ? 'Level ' + prof.bbbee_level : ''],
         ['CIDB grade', prof.cidb_grade], ['CIDB number', prof.cidb_number],
         ['Bank', bank.bank], ['Account no.', bank.account], ['Branch code', bank.branch],
         ['Today’s date', todayText()],
       ].filter(([, v]) => v && String(v).trim());
+      const mine = Array.isArray(prof.quick_fills) ? prof.quick_fills : [];
       state.profile = prof;
-      if (chips.length <= 1) {
+      if (chips.length <= 1 && !mine.length) {
         box.innerHTML = '<p class="dv-profile-help">No company details saved yet. Add them in <strong>Company profile</strong> on your dashboard and they will appear here.</p>';
       } else box.innerHTML = '';
       chips.forEach(([label, value]) => {
@@ -1051,6 +1087,35 @@
         b.addEventListener('click', () => useValue(String(value)));
         box.appendChild(b);
       });
+      // the person's own quick-fill items: kept for good, with a small x to remove
+      mine.forEach((it) => {
+        const wrap = document.createElement('div'); wrap.className = 'dv-chipwrap';
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'dv-chip';
+        b.innerHTML = `<span>${esc(it.label)}</span><b>${esc(truncate(String(it.value), 60))}</b>`;
+        b.addEventListener('pointerdown', (e) => e.preventDefault());
+        b.addEventListener('click', () => useValue(String(it.value)));
+        const x = document.createElement('button');
+        x.type = 'button'; x.className = 'dv-chip-x'; x.setAttribute('aria-label', 'Remove ' + it.label); x.textContent = '×';
+        x.addEventListener('click', async () => { if (await saveQuickFills(mine.filter((m) => m.id !== it.id))) loadProfileChips(); });
+        wrap.append(b, x); box.appendChild(wrap);
+      });
+      // "+ Add your own": label and value, saved to the profile for good
+      if (!root.querySelector('.dv-qf-add')) {
+        const f = document.createElement('details'); f.className = 'dv-qf-add';
+        f.innerHTML = '<summary>+ Add your own quick-fill</summary><div class="dv-qf-form"><input type="text" class="dv-qf-l" maxlength="40" placeholder="Label, e.g. PSIRA number" /><input type="text" class="dv-qf-v" maxlength="400" placeholder="The text to fill in" /><button type="button" class="dv-btn dv-primary small">Save</button><p class="dv-qf-msg" hidden></p></div>';
+        box.insertAdjacentElement('afterend', f);
+        f.querySelector('button').addEventListener('click', async () => {
+          const l = f.querySelector('.dv-qf-l'), v = f.querySelector('.dv-qf-v'), m = f.querySelector('.dv-qf-msg');
+          if (!l.value.trim() || !v.value.trim()) { m.hidden = false; m.textContent = 'Type a label and a value.'; return; }
+          const cur = (state.profile && Array.isArray(state.profile.quick_fills)) ? state.profile.quick_fills : [];
+          if (await saveQuickFills(cur.concat([{ id: Math.random().toString(36).slice(2, 10), label: l.value.trim(), value: v.value.trim() }]), m)) { l.value = ''; v.value = ''; m.hidden = true; f.open = false; loadProfileChips(); }
+        });
+      }
+    }
+    async function saveQuickFills(items, msgEl) {
+      try { const r = await MWAuth.api('/api/account/quickfills', { method: 'PUT', body: JSON.stringify({ items }) }); if (state.profile) state.profile.quick_fills = r.items || items; return true; }
+      catch (err) { if (msgEl) { msgEl.hidden = false; msgEl.textContent = err.message || 'Could not save that.'; } return false; }
     }
     function useValue(value) {
       // Fill the field you are typing in (a PDF form field, or a text box with nothing in it yet).
@@ -1142,6 +1207,19 @@
         const taEl = (root.querySelector('.dv-item[data-id="' + it.id + '"]') || {})._ta;
         const seen = taEl ? screenLines(taEl, it.text || '') : null;
         const lines = seen ? seen.map((ln) => safeText(font, ln.replace(/\s+$/, ''))) : wrapLines(text, font, it.size, Math.max(10, it.w - 6));
+        // preferred: draw the person's handwriting exactly as they see it
+        if (seen && seen.some((ln) => ln.trim())) {
+          try {
+            await handFontReady();
+            const img = await handTextImage(it, taEl, seen);
+            if (img) {
+              const pic = await doc.embedPng(img.bytes);
+              const [px, py] = toPdf(it.x, it.y + img.heightPt); // bottom-left corner of the picture
+              page.drawImage(pic, { x: px, y: py, width: it.w, height: img.heightPt, rotate: L.degrees(rot) });
+              return;
+            }
+          } catch (err) { console.warn('[docviewer] handwriting picture failed, using plain text', err); }
+        }
         lines.forEach((ln, k) => {
           if (!ln) return;
           const [px, py] = toPdf(it.x + 2, it.y + 1 + it.size * 0.93 + k * it.size * 1.2);
@@ -1396,6 +1474,7 @@
         e.preventDefault();
         const to = form.to.value.trim();
         if (!to) { emailMsg('Enter an email address to send to.', 'err'); form.to.focus(); return; }
+        if (global.MWBilling && !(await MWBilling.confirmEmailUse())) return; // free plan: sending counts as the one free download
         const send = form.querySelector('[type=submit]');
         send.disabled = true; send.textContent = 'Sending…'; emailMsg('Preparing your document…');
         try {
@@ -1510,7 +1589,7 @@
           const d = t.dataset.act === 'size-up' ? 1 : -1;
           const it = state.items.find((i) => i.id === state.selected && i.type !== 'tick' && i.type !== 'stamp' && i.type !== 'signature') || null;
           const tick = state.items.find((i) => i.id === state.selected && i.type === 'tick') || null;
-          if (it) { it.size = Math.max(6, Math.min(28, it.size + d)); state.defaultSize = it.size; const el = root.querySelector('.dv-item[data-id="' + it.id + '"] textarea'); if (el) el.style.fontSize = it.size * state.scale + 'px'; touch(); }
+          if (it) { it.size = Math.max(6, Math.min(28, it.size + d)); state.defaultSize = it.size; const el = root.querySelector('.dv-item[data-id="' + it.id + '"] textarea'); if (el) el.style.fontSize = it.size * HAND * state.scale + 'px'; touch(); }
           else if (state.items.find((i) => i.id === state.selected && (i.type === 'stamp' || i.type === 'signature'))) {
             const st = state.items.find((i) => i.id === state.selected); const k = d > 0 ? 1.12 : 1 / 1.12;
             const nw = Math.max(50, Math.min(420, st.w * k)); st.h = st.h * (nw / st.w); st.w = nw;

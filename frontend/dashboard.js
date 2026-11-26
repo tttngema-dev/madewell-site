@@ -325,9 +325,33 @@
   if (location.hash === '#alerts') showTab('alerts');
   window.addEventListener('hashchange', () => { if (location.hash === '#alerts') showTab('alerts'); else if (location.hash === '#profile') showTab('profile'); });
 
+  // ---- your own quick-fill items (kept for good, shown in the document editor) ----
+  let qfItems = [];
+  function renderQF() {
+    const box = $('#qf-list'); if (!box) return;
+    box.innerHTML = qfItems.length ? '' : '<p class="fine">Nothing added yet.</p>';
+    qfItems.forEach((it) => {
+      const row = document.createElement('div'); row.className = 'qf-row';
+      row.innerHTML = '<span><b>' + esc(it.label) + '</b><br><span class="fine">' + esc(it.value) + '</span></span><button type="button" class="linkish" aria-label="Remove ' + esc(it.label) + '">Remove</button>';
+      row.querySelector('button').addEventListener('click', () => saveQF(qfItems.filter((x) => x.id !== it.id), 'Removed.'));
+      box.appendChild(row);
+    });
+  }
+  async function saveQF(items, okMsg) {
+    const msg = $('#qf-msg');
+    try { const r = await MWAuth.api('/api/account/quickfills', { method: 'PUT', body: JSON.stringify({ items }) }); qfItems = r.items || items; renderQF(); msg.textContent = okMsg; return true; }
+    catch (err) { msg.textContent = err.message || 'Could not save that.'; return false; }
+  }
+  document.addEventListener('click', async (e) => {
+    if (!e.target.closest('#qf-add')) return;
+    const l = $('#qf-label'), v = $('#qf-value');
+    if (!l.value.trim() || !v.value.trim()) { $('#qf-msg').textContent = 'Type a label and a value.'; return; }
+    if (await saveQF(qfItems.concat([{ id: Math.random().toString(36).slice(2, 10), label: l.value.trim(), value: v.value.trim() }]), 'Added. It is now in your quick-fill list.')) { l.value = ''; v.value = ''; l.focus(); }
+  });
+
   function updateCompleteness() {
     const f = $('#profile-form');
-    const keys = ['registered_name', 'cipc_number', 'contact_email', 'contact_phone', 'address_line1', 'city', 'province', 'postal_code', 'tax_number', 'vat_number', 'bbbee_level'];
+    const keys = ['registered_name', 'cipc_number', 'csd_number', 'contact_email', 'contact_phone', 'address_line1', 'city', 'province', 'postal_code', 'tax_number', 'vat_number', 'bbbee_level'];
     const done = keys.filter((k) => f[k] && String(f[k].value).trim()).length;
     const pct = Math.round((done / keys.length) * 100);
     const fill = $('#complete-fill'); fill.style.width = pct + '%'; fill.classList.toggle('done', pct === 100);
@@ -342,7 +366,7 @@
     if (!f || !box) return;
     const has = (k) => !!(f[k] && String(f[k].value).trim());
     const steps = [
-      ['company name', has('registered_name')], ['registration number', has('cipc_number')], ['phone number', has('contact_phone')],
+      ['company name', has('registered_name')], ['registration number', has('cipc_number')], ['CSD (MAAA) number', has('csd_number')], ['phone number', has('contact_phone')],
       ['address', has('address_line1') && has('city')], ['company documents', cdocs.length > 0], ['signature', !!mySig],
       ['tender alerts', !!(alertPrefs && alertPrefs.enabled)],
     ];
@@ -368,6 +392,8 @@
       form.registered_name.value = p.registered_name || '';
       form.trading_name.value = p.trading_name || '';
       form.cipc_number.value = p.cipc_number || '';
+      form.csd_number.value = p.csd_number || '';
+      qfItems = Array.isArray(p.quick_fills) ? p.quick_fills : []; renderQF();
       form.industries.value = Array.isArray(p.industries) ? p.industries.join(', ') : '';
       form.contact_email.value = p.contact_email || data.email || '';
       form.contact_phone.value = p.contact_phone || '';
@@ -404,6 +430,7 @@
         registered_name: form.registered_name.value.trim(),
         trading_name: form.trading_name.value.trim(),
         cipc_number: form.cipc_number.value.trim(),
+        csd_number: form.csd_number.value.trim(),
         industries,
         contact_email: form.contact_email.value.trim(),
         contact_phone: form.contact_phone.value.trim(),

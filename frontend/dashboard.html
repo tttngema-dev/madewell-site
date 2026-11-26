@@ -144,6 +144,7 @@
               <label>Registered name<input name="registered_name" type="text" autocomplete="organization" /></label>
               <label>Trading name<input name="trading_name" type="text" /></label>
               <label>CIPC / registration number<input name="cipc_number" type="text" /></label>
+              <label>CSD supplier number (MAAA)<input name="csd_number" type="text" placeholder="MAAA0000000" autocapitalize="characters" autocomplete="off" /><small>From your Central Supplier Database registration</small></label>
               <label>Industries<input name="industries" type="text" placeholder="Construction, Cleaning, IT" /><small>Separate with commas</small></label>
             </div>
           </section>
@@ -189,6 +190,15 @@
               <label>Account number<input name="bank_account" type="text" autocomplete="off" inputmode="numeric" /></label>
               <label>Branch code<input name="bank_branch" type="text" inputmode="numeric" /></label>
             </div>
+          </section>
+          <section class="pf-section" id="qf-section">
+            <div class="pf-head"><h3>Your own quick-fill items <span class="opt">Optional</span></h3><p>Anything you type on tender forms again and again, such as a PSIRA number, a branch name or a contact person. They appear in the document editor's quick-fill list and stay there.</p></div>
+            <div id="qf-list" class="qf-list"></div>
+            <div class="pf-fields qf-add">
+              <label>Label<input id="qf-label" type="text" maxlength="40" placeholder="e.g. PSIRA number" autocomplete="off" /></label>
+              <label>Value<input id="qf-value" type="text" maxlength="400" placeholder="The text to fill in" autocomplete="off" /></label>
+            </div>
+            <p style="margin-top:.75rem"><button type="button" class="btn small" id="qf-add">Add to quick-fill</button> <span id="qf-msg" class="fine" role="status"></span></p>
           </section>
           <div class="pf-save">
             <p id="profile-msg" class="form-msg" role="status" hidden></p>
@@ -246,6 +256,7 @@
     <nav aria-label="Legal"><h4>Legal</h4><ul>
       <li><a href="privacy.html">Privacy Policy</a></li>
       <li><a href="terms.html">Terms and Conditions</a></li>
+      <li><a href="refund-policy.html">Refund Policy</a></li>
       <li><a href="popia.html">POPIA Information</a></li>
     </ul></nav>
   </div>
