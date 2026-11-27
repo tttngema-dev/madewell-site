@@ -78,8 +78,8 @@
   const COPY = {
     doc: { eye: 'Your free document is done', h: 'Loved how fast that was? Do it for every tender.', sub: 'You’ve seen how it works. With Pro you can fill in, stamp, sign, attach and send every tender you chase, without the printing, scanning and rework.' },
     alerts: { eye: 'Pro feature', h: 'Let the tenders come to you', sub: 'Every morning we email you the best new tenders that match your business: up to 10 a day, never the same one twice. You’ll hear about them while others are still searching.' },
-    download: { eye: 'Your free download is used', h: 'Need to download more?', sub: 'Free accounts get one download in total, and yours is used. With Pro you can download and email as many tender documents as you need, blank or filled in.' },
-    export: { eye: 'Your free download is used', h: 'Need to download more?', sub: 'Free accounts get one download in total, and yours is used. With Pro you can download and email as many tender documents as you need, blank or filled in.' },
+    download: { eye: 'Your free download is used', h: 'Need to download more?', sub: 'Only Pro members can download more than once. Free accounts get one download in total, and yours is used. With Pro you can download and email as many tender documents as you need, blank or filled in.' },
+    export: { eye: 'Your free download is used', h: 'Need to download more?', sub: 'Only Pro members can download more than once. Free accounts get one download in total, and yours is used. With Pro you can download and email as many tender documents as you need, blank or filled in.' },
     upgrade: { eye: 'Made Well Pro', h: 'Win more tenders with less paperwork', sub: 'Stop retyping the same company details into every form. Fill it in once, and every tender becomes a few taps.' },
   };
   const BENEFITS = [
@@ -174,19 +174,19 @@
     try { user = g.MWAuth ? await MWAuth.getUser() : null; } catch (_) {}
     const ask = () => confirmUse({ h: 'Use your free download?', text: 'Free accounts get one download in total, for the whole site. This will be it, so choose the document you really need. You can still preview and fill in documents, and Pro lets you download and email as many as you need.', yes: 'Download it' });
     if (user) {
-      let s = null; try { s = await status(true); } catch (_) {}
-      if (s && s.pro) return true;
-      if (s && s.download && s.download.used) { openPaywall({ reason: 'download' }); return false; }
-      if (!(await ask())) return false;
-      try {
-        const r = await MWAuth.api('/api/billing/download', { method: 'POST', body: JSON.stringify({ ocid: ocid || '', doc_url: url, title: title || '' }) });
-        if (r.allowed === false) { openPaywall({ reason: 'download' }); return false; }
-        if (s) markUsed(s); else changed();
-        return true;
-      } catch (err) {
+      const post = (extra) => MWAuth.api('/api/billing/download', { method: 'POST', body: JSON.stringify(Object.assign({ ocid: ocid || '', doc_url: url, title: title || '' }, extra)) });
+      let d;
+      try { d = await post({ dry: true }); }                                  // "may I?" Nothing is used up. Pro people are told so here.
+      catch (err) {
         if (err && err.status === 402) { changed(); openPaywall({ reason: 'download' }); return false; }
-        say((err && err.status ? err.message : 'We could not check your download allowance. Check your connection and try again.') || 'Please try again.');
-        return false; // when we cannot check, nothing is handed out
+        say('We could not reach Made Well. Check your connection and try again.'); return false;
+      }
+      if (d.pro) return true;                                                  // Pro: no questions, no limits
+      if (!(await ask())) return false;
+      try { await post({}); changed(); return true; }
+      catch (err) {
+        if (err && err.status === 402) { changed(); openPaywall({ reason: 'download' }); return false; }
+        say('We could not reach Made Well. Check your connection and try again.'); return false;
       }
     }
     if (guestUsed()) { openPaywall({ reason: 'download' }); return false; }
@@ -196,31 +196,35 @@
   }
 
   /**
-   * Free plan: ONE finished filled-in document, downloaded or emailed, once. Pro: unlimited.
+   * The finished filled-in PDF is the same one free download. Pro: unlimited and never asked.
    * true = go ahead. false = the paywall has been shown (or they cancelled).
    */
   async function allowExport(ocid, url, title) {
-    let s = null; try { s = await status(true); } catch (_) {}
-    if (s && s.pro) return true;
-    if (s && s.export && s.export.used) { openPaywall({ reason: 'export' }); return false; }
+    const post = (extra) => MWAuth.api('/api/billing/export', { method: 'POST', body: JSON.stringify(Object.assign({ ocid: ocid || '', doc_url: url || '', title: title || '' }, extra)) });
+    let d;
+    try { d = await post({ dry: true }); }
+    catch (err) {
+      if (err && err.status === 402) { changed(); openPaywall({ reason: (err.data && err.data.reason) || 'export' }); return false; }
+      say('We could not reach Made Well. Check your connection and try again.'); return false;
+    }
+    if (d.pro) return true;
     if (!(await confirmUse({ h: 'Use your free download?', text: 'Free accounts get one download in total, for the whole site, and this finished document will use it. You can keep editing it and fill in other documents. Pro lets you download and email as many as you need.', yes: 'Continue' }))) return false;
-    try {
-      const r = await MWAuth.api('/api/billing/export', { method: 'POST', body: JSON.stringify({ ocid: ocid || '', doc_url: url || '', title: title || '' }) });
-      if (r.allowed === false) { openPaywall({ reason: 'export' }); return false; }
-      if (s) markUsed(s); else changed();
-      return true;
-    } catch (err) {
-      if (err && err.status === 402) { changed(); openPaywall({ reason: 'export' }); return false; }
-      say((err && err.status ? err.message : 'We could not check your download allowance. Check your connection and try again.') || 'Please try again.');
-      return false; // when we cannot check, nothing is handed out
+    try { await post({}); changed(); return true; }
+    catch (err) {
+      if (err && err.status === 402) { changed(); openPaywall({ reason: (err.data && err.data.reason) || 'export' }); return false; }
+      say('We could not reach Made Well. Check your connection and try again.'); return false;
     }
   }
 
   /** Emailing a finished document uses the same one free download. The server records it only after the email really goes out. */
-  async function confirmEmailUse() {
-    let s = null; try { s = await status(true); } catch (_) {}
-    if (s && s.pro) return true;
-    if (s && s.export && s.export.used) { openPaywall({ reason: 'export' }); return false; }
+  async function confirmEmailUse(ocid, url) {
+    let d;
+    try { d = await MWAuth.api('/api/billing/export', { method: 'POST', body: JSON.stringify({ ocid: ocid || '', doc_url: url || '', dry: true }) }); }
+    catch (err) {
+      if (err && err.status === 402) { changed(); openPaywall({ reason: (err.data && err.data.reason) || 'export' }); return false; }
+      say('We could not reach Made Well. Check your connection and try again.'); return false;
+    }
+    if (d.pro) return true;                                                    // Pro: never asked
     return confirmUse({ h: 'Use your free download?', text: 'Free accounts get one download in total, and emailing this finished document will use it. Pro lets you download and email as many as you need.', yes: 'Send it' });
   }
 
@@ -278,7 +282,6 @@
       if (s.pro && sub.source === 'payfast' && sub.status === 'active') {
         cls += ' is-pro'; title = 'Made Well Pro · active';
         text = 'You have everything unlocked. Next payment around ' + fmtDate(sub.current_period_end) + '.';
-        act = '<button type="button" class="linkish" data-a="cancel">Cancel subscription</button>';
       } else if (s.pro && sub.source === 'payfast') {
         cls += ' is-pro'; title = 'Made Well Pro · ends ' + fmtDate(sub.current_period_end);
         text = 'Your subscription won’t renew. You keep everything until then.';
@@ -319,6 +322,45 @@
     return render();
   }
 
+  // ---- Manage subscription: a quiet link at the bottom of the dashboard. Plan details, and where cancelling lives. ----
+  async function openManage() {
+    let s; try { s = await status(true); } catch (_) { say('We could not load your plan. Please try again.'); return; }
+    const sub = s.subscription || {};
+    const el = document.createElement('div');
+    el.className = 'pw'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true');
+    const card = document.createElement('div'); card.className = 'pw-card'; card.style.maxWidth = '28rem';
+    el.appendChild(card); document.body.appendChild(el);
+    const close = () => { document.removeEventListener('keydown', onKey, true); el.remove(); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+    document.addEventListener('keydown', onKey, true);
+    el.addEventListener('mousedown', (e) => { if (e.target === el) close(); });
+    const frame = (title, bodyHtml, buttons) => {
+      card.innerHTML = '<button type="button" class="pw-x" aria-label="Close">&times;</button><h2 style="margin-top:.2rem">' + esc(title) + '</h2>' + bodyHtml + '<div id="mg-btns" style="display:grid;gap:.5rem;margin-top:1rem"></div><p class="pw-msg" role="status" hidden></p>';
+      card.querySelector('.pw-x').addEventListener('click', close);
+      const box = card.querySelector('#mg-btns');
+      buttons.forEach((b) => { const x = document.createElement('button'); x.type = 'button'; x.className = b.cls || 'btn'; x.textContent = b.label; x.addEventListener('click', () => b.fn(x)); box.appendChild(x); });
+    };
+    const msg = (t, err) => { const m = card.querySelector('.pw-msg'); m.hidden = !t; m.className = 'pw-msg ' + (err ? 'err' : 'ok'); m.textContent = t || ''; };
+    const ends = fmtDate(sub.current_period_end);
+    const goPro = { label: 'Go Pro · ' + money(s.price) + '/month', cls: 'btn', fn: () => { close(); openPaywall({ reason: 'upgrade' }); } };
+    if (!s.pro) { frame('Your subscription', '<p class="pw-sub">You are on the free plan, so there is nothing to cancel.</p>', [goPro, { label: 'Close', cls: 'pw-later', fn: close }]); return; }
+    if (sub.source === 'promo') {
+      frame('Your subscription', '<p class="pw-sub">You have Pro through promo code <b>' + esc(sub.promo_code || '') + '</b>' + (sub.lifetime ? ', with no end date.' : ', until ' + esc(ends) + '.') + ' You are not being charged, so there is nothing to cancel.</p>', [].concat(sub.lifetime ? [] : [{ label: 'Keep Pro after that · ' + money(s.price) + '/month', cls: 'btn', fn: (b) => startCheckout(b, card.querySelector('.pw-msg')) }], [{ label: 'Close', cls: 'pw-later', fn: close }]));
+      return;
+    }
+    if (sub.status === 'cancelled') {
+      frame('Your subscription', '<p class="pw-sub">Your subscription is cancelled and will not renew. You keep Pro until <b>' + esc(ends) + '</b>.</p>', [{ label: 'Restart Pro · ' + money(s.price) + '/month', cls: 'btn', fn: (b) => startCheckout(b, card.querySelector('.pw-msg')) }, { label: 'Close', cls: 'pw-later', fn: close }]);
+      return;
+    }
+    const first = () => frame('Your subscription', '<p class="pw-sub"><b>Made Well Pro</b>, ' + esc(money(s.price)) + ' a month. Next payment around <b>' + esc(ends) + '</b>.</p><p class="fine">You can cancel at any time. See our <a href="refund-policy.html">Refund Policy</a>.</p>', [{ label: 'Keep my subscription', cls: 'btn', fn: close }, { label: 'Cancel subscription', cls: 'pw-later', fn: second }]);
+    const second = () => frame('Cancel Made Well Pro?', '<p class="pw-sub">You keep Pro until <b>' + esc(ends) + '</b>, the end of the month you have paid for, and you will not be charged again.</p>', [{ label: 'Keep my subscription', cls: 'btn', fn: close }, { label: 'Yes, cancel it', cls: 'pw-later', fn: async (b) => {
+      b.disabled = true; b.textContent = 'Cancelling…';
+      try { await MWAuth.api('/api/billing/cancel', { method: 'POST', body: '{}' }); changed(); frame('Subscription cancelled', '<p class="pw-sub">Done. You keep Pro until <b>' + esc(ends) + '</b> and you will not be charged again.</p>', [{ label: 'Close', cls: 'btn', fn: close }]); }
+      catch (err) { b.disabled = false; b.textContent = 'Yes, cancel it'; msg(err.message || 'We could not cancel it. Please try again, or contact us on WhatsApp.', true); }
+    } }]);
+    first();
+  }
+
   // Small things that follow the plan: the nav button, and any [data-pro-only] / [data-free-only] element
   async function syncNav() {
     let s = null;
@@ -347,5 +389,5 @@
     toast('Your payment is still being confirmed. Pro will switch on by itself in a minute. Refresh this page shortly.');
   }
 
-  g.MWBilling = { status, changed, locked, isTrialDoc, guardDoc, allowDownload, allowExport, confirmEmailUse, openPaywall, celebrate, mountPlanCard, syncNav, handleReturn, crown: CROWN, promoBox };
+  g.MWBilling = { openManage, status, changed, locked, isTrialDoc, guardDoc, allowDownload, allowExport, confirmEmailUse, openPaywall, celebrate, mountPlanCard, syncNav, handleReturn, crown: CROWN, promoBox };
 })(window);

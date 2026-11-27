@@ -705,16 +705,16 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden) sweepSoon(100); });
 
 
-    // Handwriting: tender forms are traditionally filled in by hand, so text boxes use Indie Flower (a human-looking hand).
-    const HAND = 1.12; // Indie Flower looks smaller than Helvetica at the same size, so it is drawn a little bigger
+    // Handwriting: tender forms are traditionally filled in by hand, so text boxes use Finger Paint (a human-looking hand).
+    const HAND = 0.9; // Finger Paint is a wide, chunky font, so it is drawn a little smaller than Helvetica to keep boxes about the same size
     const INK = '#0a0a20';
     function handFontReady() {
       try {
         if (!document.getElementById('mw-hand-font')) {
-          const l = document.createElement('link'); l.id = 'mw-hand-font'; l.rel = 'stylesheet'; l.href = 'https://fonts.googleapis.com/css2?family=Indie+Flower&display=swap';
+          const l = document.createElement('link'); l.id = 'mw-hand-font'; l.rel = 'stylesheet'; l.href = 'https://fonts.googleapis.com/css2?family=Finger+Paint&display=swap';
           document.head.appendChild(l);
         }
-        const wait = document.fonts && document.fonts.load ? document.fonts.load('20px "Indie Flower"', 'ABCabc0123') : Promise.resolve();
+        const wait = document.fonts && document.fonts.load ? document.fonts.load('20px "Finger Paint"', 'ABCabc0123') : Promise.resolve();
         return Promise.race([wait, new Promise((r) => setTimeout(r, 4000))]).catch(() => {});
       } catch (_) { return Promise.resolve(); }
     }
@@ -1474,7 +1474,7 @@
         e.preventDefault();
         const to = form.to.value.trim();
         if (!to) { emailMsg('Enter an email address to send to.', 'err'); form.to.focus(); return; }
-        if (global.MWBilling && !(await MWBilling.confirmEmailUse())) return; // free plan: sending counts as the one free download
+        if (global.MWBilling && !(await MWBilling.confirmEmailUse(o.ocid, o.url))) return; // free plan: sending counts as the one free download
         const send = form.querySelector('[type=submit]');
         send.disabled = true; send.textContent = 'Sending…'; emailMsg('Preparing your document…');
         try {

@@ -147,6 +147,8 @@
     });
   }
 
+  document.addEventListener('click', (e) => { if (e.target.closest('#manage-sub') && window.MWBilling) MWBilling.openManage(); });
+
   // Crown on the Tender alerts tab while on the free plan; re-draw open document lists when the plan changes
   async function markAlertsCrown() {
     if (!window.MWBilling) return;

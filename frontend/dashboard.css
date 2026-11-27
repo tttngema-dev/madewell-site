@@ -260,3 +260,7 @@
 .qf-list { display: grid; gap: .5rem; margin-bottom: 1rem; }
 .qf-row { display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: .6rem .85rem; border: 1px solid var(--line); border-radius: 10px; background: var(--stage); word-break: break-word; }
 .qf-row .linkish { flex: none; }
+
+.manage-sub { max-width: 1080px; margin: 2.5rem auto 0; padding: 0 1.5rem; text-align: right; font-size: .85rem; }
+.manage-sub .linkish { background: none; border: 0; color: var(--soft); opacity: .8; font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.manage-sub .linkish:hover { opacity: 1; color: var(--paper); }
