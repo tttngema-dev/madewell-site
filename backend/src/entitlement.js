@@ -85,6 +85,7 @@ export async function checkDownload(userId, ocid, docUrl, title, opts = {}) {
   if (!st.known) return { allowed: true, unknown: true };
   try {
     if (await usedFreeDownload(userId)) return { allowed: !!opts.claim, used: true };  // a "claim" (a visitor who signs up) is just noted
+    if (opts.dry) return { allowed: true, first: true, dry: true };                     // only asking: nothing is used up
     return { allowed: await useFreeDownload(userId, ocid, docUrl, title), first: true };
   } catch (err) {
     console.error('[entitlement] DOWNLOAD LIMIT CHECK FAILED (did you run backend/sql/run_this_once.sql?):', err.message);

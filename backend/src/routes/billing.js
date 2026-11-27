@@ -48,35 +48,41 @@ billingRouter.get('/billing/status', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/billing/download  { ocid, doc_url, title }  -> may this person download this tender document?
+// The answer a free person gets whenever the one free download is not available (used up, or we could not check):
+// always the same plain message, never "temporarily unavailable".
+const ONLY_PRO = { ...PRO_REQUIRED, reason: 'download', error: 'Only Pro members can download more than once. Go Pro to download and email as many documents as you need.' };
+
+// POST /api/billing/download  { ocid, doc_url, title, dry?, claim? }
+//   dry: true  = "may I?" (nothing is used up). Pro people are told {pro:true}. Free people with a download left get {allowed:true}.
 billingRouter.post('/billing/download', requireAuth, async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.doc_url) return res.status(400).json({ ok: false, error: 'Missing document.' });
-    const r = await checkDownload(req.user.id, b.ocid, b.doc_url, b.title, { claim: !!b.claim });
-    if (r.error) return res.status(503).json({ ok: false, error: 'Downloads are temporarily unavailable. Please try again shortly.' });
-    if (!r.allowed) return res.status(402).json({ ...PRO_REQUIRED, reason: 'download', error: 'Your free download is used. Go Pro to download more tender documents.' });
-    res.json({ ok: true, allowed: true, claimed: !!b.claim });
+    const r = await checkDownload(req.user.id, b.ocid, b.doc_url, b.title, { claim: !!b.claim, dry: !!b.dry });
+    if (r.error) return res.status(402).json({ ...ONLY_PRO, setup_problem: true });
+    if (!r.allowed) return res.status(402).json(ONLY_PRO);
+    res.json({ ok: true, allowed: true, pro: !!r.pro, claimed: !!b.claim });
   } catch (err) {
     console.error('[billing download]', err.message);
-    res.status(503).json({ ok: false, error: 'Downloads are temporarily unavailable. Please try again shortly.' });
+    res.status(402).json({ ...ONLY_PRO, setup_problem: true });
   }
 });
 
-// POST /api/billing/export  { ocid, doc_url }  -> the finished (filled-in) PDF is about to be downloaded: one per free person
+// POST /api/billing/export  { ocid, doc_url, dry? }  -> the finished (filled-in) PDF: the same one free download
 billingRouter.post('/billing/export', requireAuth, async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.doc_url) return res.status(400).json({ ok: false, error: 'Missing document.' });
     const r = await peekExport(req.user.id, b.ocid, b.doc_url);
-    if (r.error) return res.status(503).json({ ok: false, error: 'Downloads are temporarily unavailable. Please try again shortly.' });
-    if (!r.allowed) return res.status(402).json({ ...PRO_REQUIRED, reason: r.reason === 'doc' ? 'doc' : 'export', error: 'Your free download has been used. Go Pro to download or email more.' });
+    if (r.error) return res.status(402).json({ ...ONLY_PRO, setup_problem: true });
+    if (!r.allowed) return res.status(402).json(r.reason === 'doc' ? { ...PRO_REQUIRED, reason: 'doc', error: 'Free accounts can fill in one document. Go Pro to work on more.' } : ONLY_PRO);
+    if (b.dry) return res.json({ ok: true, allowed: true, pro: !!r.pro, dry: true });
     const recorded = await recordExport(req.user.id, b.ocid, b.doc_url, 'download');
-    if (!recorded) return res.status(402).json({ ...PRO_REQUIRED, reason: 'export', error: 'Your free download has been used. Go Pro to download or email more.' });
-    res.json({ ok: true, allowed: true });
+    if (!recorded) return res.status(402).json(ONLY_PRO);
+    res.json({ ok: true, allowed: true, pro: !!r.pro });
   } catch (err) {
     console.error('[billing export]', err.message);
-    res.status(503).json({ ok: false, error: 'Downloads are temporarily unavailable. Please try again shortly.' });
+    res.status(402).json({ ...ONLY_PRO, setup_problem: true });
   }
 });
 
