@@ -352,7 +352,7 @@
     const editable = !!o.editable;
     const state = {
       pdf: null, bytes: null, pages: [], zoom: 1, scale: 1,
-      items: [], fields: {}, defaultSize: 11, mark: (function () { try { const m = localStorage.getItem('mw:mark'); return m === 'cross' || m === 'circle' ? m : 'tick'; } catch (_) { return 'tick'; } })(),
+      items: [], fields: {}, defaultSize: 11, font: (function () { try { const f = localStorage.getItem('mw:font'); return f === 'hand1' || f === 'normal' ? f : 'hand2'; } catch (_) { return 'hand2'; } })(), mark: (function () { try { const m = localStorage.getItem('mw:mark'); return m === 'cross' || m === 'circle' ? m : 'tick'; } catch (_) { return 'tick'; } })(),
       tool: null, // 'text' | 'tick' | 'date' | {profile: 'value'}
       selected: null, lastFocus: null, dirty: false, user: null, profile: null,
       saveMode: 'server', closed: false,
@@ -377,7 +377,7 @@
       </header>
       ${editable ? `<div class="dv-tools" role="toolbar" aria-label="Fill in tools">
         <button type="button" class="dv-tool" data-tool="text" title="Click on the page to type text">+ Text</button>
-        <span class="dv-markwrap"><button type="button" class="dv-tool" data-tool="tick" aria-haspopup="menu" aria-expanded="false" title="Choose a tick, cross or circle, then click on the page">✓ Tick ▾</button><div class="dv-menu" role="menu" hidden><button type="button" role="menuitem" data-mark="tick">✓ Tick</button><button type="button" role="menuitem" data-mark="cross">✗ Cross</button><button type="button" role="menuitem" data-mark="circle">◯ Circle</button></div></span>
+        <span class="dv-markwrap"><button type="button" class="dv-tool dv-fontbtn" data-fontbtn aria-haspopup="menu" aria-expanded="false" title="Choose the writing style">Aa Font ▾</button><div class="dv-menu" data-menu="font" role="menu" hidden><button type="button" role="menuitem" data-font="hand2" style="font-family:'Finger Paint',cursive">Handwriting 2</button><button type="button" role="menuitem" data-font="hand1" style="font-family:'Indie Flower',cursive;font-size:1.15rem">Handwriting 1</button><button type="button" role="menuitem" data-font="normal" style="font-family:Helvetica,Arial,sans-serif">Normal</button></div></span><span class="dv-markwrap"><button type="button" class="dv-tool" data-tool="tick" aria-haspopup="menu" aria-expanded="false" title="Choose a tick, cross or circle, then click on the page">✓ Tick ▾</button><div class="dv-menu" data-menu="mark" role="menu" hidden><button type="button" role="menuitem" data-mark="tick">✓ Tick</button><button type="button" role="menuitem" data-mark="cross">✗ Cross</button><button type="button" role="menuitem" data-mark="circle">◯ Circle</button></div></span>
         <button type="button" class="dv-tool" data-tool="date" title="Click on the page to place today's date">Date</button>
         <button type="button" class="dv-tool" data-tool="stamp" title="Add your company stamp (name, date and details)">&#9635; Stamp</button>
         <button type="button" class="dv-tool" data-tool="sign" title="Sign with your finger or mouse">&#9998; Sign</button>
@@ -706,15 +706,22 @@
 
 
     // Handwriting: tender forms are traditionally filled in by hand, so text boxes use Finger Paint (a human-looking hand).
-    const HAND = 0.9; // Finger Paint is a wide, chunky font, so it is drawn a little smaller than Helvetica to keep boxes about the same size
+    // Three choices. Handwriting 1 = Indie Flower, Handwriting 2 = Finger Paint (the default), Normal = a plain professional font.
+    // 'scale' keeps boxes about the same size across fonts (Finger Paint is wide and chunky, Indie Flower is small).
+    const FONTS = {
+      hand1: { label: 'Handwriting 1', css: "'Indie Flower', 'Segoe Print', 'Bradley Hand', 'Comic Sans MS', cursive", scale: 1.12, lh: 1.25, raster: true },
+      hand2: { label: 'Handwriting 2', css: "'Finger Paint', 'Segoe Print', 'Bradley Hand', 'Comic Sans MS', cursive", scale: 0.9, lh: 1.25, raster: true },
+      normal: { label: 'Normal', css: 'Helvetica, Arial, sans-serif', scale: 1, lh: 1.2, raster: false },
+    };
+    const fontOf = (it) => FONTS[(it && it.font) || 'hand2'] || FONTS.hand2;
     const INK = '#0a0a20';
     function handFontReady() {
       try {
         if (!document.getElementById('mw-hand-font')) {
-          const l = document.createElement('link'); l.id = 'mw-hand-font'; l.rel = 'stylesheet'; l.href = 'https://fonts.googleapis.com/css2?family=Finger+Paint&display=swap';
+          const l = document.createElement('link'); l.id = 'mw-hand-font'; l.rel = 'stylesheet'; l.href = 'https://fonts.googleapis.com/css2?family=Finger+Paint&family=Indie+Flower&display=swap';
           document.head.appendChild(l);
         }
-        const wait = document.fonts && document.fonts.load ? document.fonts.load('20px "Finger Paint"', 'ABCabc0123') : Promise.resolve();
+        const wait = document.fonts && document.fonts.load ? Promise.all([document.fonts.load('20px "Finger Paint"', 'ABCabc0123'), document.fonts.load('20px "Indie Flower"', 'ABCabc0123')]) : Promise.resolve();
         return Promise.race([wait, new Promise((r) => setTimeout(r, 4000))]).catch(() => {});
       } catch (_) { return Promise.resolve(); }
     }
@@ -743,7 +750,7 @@
 
     // A transparent picture of the text box's lines, at 4x for sharp printing. Uses the same font stack as the screen, so it always matches.
     async function handTextImage(it, ta, lines) {
-      const S = 4, fs = it.size * HAND, lh = fs * 1.25, padX = 3, padY = 2;
+      const F = fontOf(it), S = 4, fs = it.size * F.scale, lh = fs * F.lh, padX = 3, padY = 2;
       const heightPt = padY * 2 + lh * lines.length;
       const c = document.createElement('canvas');
       c.width = Math.max(1, Math.ceil(it.w * S)); c.height = Math.max(1, Math.ceil(heightPt * S));
@@ -864,7 +871,11 @@
       const del = document.createElement('button');
       del.type = 'button'; del.className = 'dv-x'; del.setAttribute('aria-label', 'Delete'); del.textContent = '×';
       del.addEventListener('click', (e) => { e.stopPropagation(); removeItem(it.id); });
-      wrap.appendChild(handle); wrap.appendChild(del);
+      const dup = document.createElement('button');
+      dup.type = 'button'; dup.className = 'dv-dup'; dup.title = 'Duplicate (Ctrl+D)'; dup.setAttribute('aria-label', 'Duplicate'); dup.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>';
+      dup.addEventListener('pointerdown', (e) => e.preventDefault());
+      dup.addEventListener('click', (e) => { e.stopPropagation(); duplicateItem(it.id); });
+      wrap.appendChild(handle); wrap.appendChild(dup); wrap.appendChild(del);
 
       if (it.type === 'tick') {
         drawMark(wrap, it);
@@ -901,7 +912,7 @@
         const ta = document.createElement('textarea');
         ta.value = it.text || '';
         ta.spellcheck = false;
-        ta.style.fontSize = it.size * HAND * s + 'px';
+        { const F = fontOf(it); ta.style.fontFamily = F.css; ta.style.lineHeight = String(F.lh); ta.style.fontSize = it.size * F.scale * s + 'px'; }
         ta.setAttribute('aria-label', 'Text box');
         ta.addEventListener('input', () => {
           it.text = ta.value;
@@ -960,9 +971,11 @@
       root.querySelectorAll('.dv-item.sel').forEach((e) => e.classList.remove('sel'));
       const el = root.querySelector('.dv-item[data-id="' + id + '"]');
       if (el) el.classList.add('sel');
+      if (typeof syncFontBtn === 'function') syncFontBtn();
     }
     function deselect(keepFocus) {
       state.selected = null;
+      if (typeof syncFontBtn === 'function') setTimeout(syncFontBtn, 0);
       state.lastFocus = null;
       root.querySelectorAll('.dv-item.sel').forEach((e) => e.classList.remove('sel'));
       const a = document.activeElement;
@@ -981,6 +994,7 @@
     function addItem(type, p, x, y, text, spec, sigKey) {
       const size = state.defaultSize;
       const it = { id: uid(), type, page: p.n, x, y, size, text: text || '' };
+      if (type === 'text') it.font = state.font;
       if (type === 'signature') {
         const sg = state.sigs[sigKey]; it.sigKey = sigKey; it.w = 140; it.h = it.w * (sg ? sg.h / sg.w : 0.4);
       } else if (type === 'stamp') {
@@ -988,7 +1002,7 @@
       } else if (type === 'tick') { it.mark = state.mark; it.seed = Math.floor(Math.random() * 1e9); const dm = markDims(it.mark, size); it.w = dm.w; it.h = dm.h; }
       else {
         const textW = text ? Math.min(p.w - 20, Math.max(80, text.length * size * 0.55 + 12)) : 150;
-        it.w = textW; it.h = Math.ceil(size * HAND * 1.25 * (text && text.includes('\n') ? text.split('\n').length : 1)) + 4;
+        it.w = textW; { const F = fontOf(it); it.h = Math.ceil(size * F.scale * F.lh * (text && text.includes('\n') ? text.split('\n').length : 1)) + 4; }
       }
       // keep inside the page
       { const kx = Math.min(28, it.w), ky = Math.min(20, it.h); it.x = Math.max(kx - it.w, Math.min(p.w - kx, x)); it.y = Math.max(ky - it.h, Math.min(p.h - ky, y)); }
@@ -999,6 +1013,22 @@
       if (el._ta && !text) el._ta.focus(); // only an empty box needs the keyboard; pre-filled ones stay put
       touch();
       return it;
+    }
+
+    // A copy right next to the original: same size, font, text and look, nudged down and right and selected, like Canva.
+    function duplicateItem(id) {
+      const src = state.items.find((x) => x.id === id);
+      if (!src) return null;
+      const p = state.pages[src.page - 1]; if (!p) return null;
+      const c = JSON.parse(JSON.stringify(src));
+      c.id = uid(); c.x = src.x + 14; c.y = src.y + 14;
+      const kx = Math.min(28, c.w), ky = Math.min(20, c.h);
+      c.x = Math.max(kx - c.w, Math.min(p.w - kx, c.x)); c.y = Math.max(ky - c.h, Math.min(p.h - ky, c.y));
+      state.items.push(c);
+      const el = makeItemEl(c);
+      p.el.querySelector('.dv-ov').appendChild(el);
+      select(c.id); touch();
+      return c;
     }
 
     function setTool(t) {
@@ -1208,7 +1238,7 @@
         const seen = taEl ? screenLines(taEl, it.text || '') : null;
         const lines = seen ? seen.map((ln) => safeText(font, ln.replace(/\s+$/, ''))) : wrapLines(text, font, it.size, Math.max(10, it.w - 6));
         // preferred: draw the person's handwriting exactly as they see it
-        if (seen && seen.some((ln) => ln.trim())) {
+        if (seen && fontOf(it).raster && seen.some((ln) => ln.trim())) {
           try {
             await handFontReady();
             const img = await handTextImage(it, taEl, seen);
@@ -1541,36 +1571,63 @@
       });
     }
 
-    // ------------------------------------------------------------ tick / cross / circle menu
+    // ------------------------------------------------------------ small drop-down menus: tick / cross / circle, and Font
+    const menuEl = (n) => root.querySelector('.dv-menu[data-menu="' + n + '"]');
     function markBtn() { return root.querySelector('[data-tool="tick"]'); }
+    function fontBtn() { return root.querySelector('[data-fontbtn]'); }
     function syncMarkBtn() {
       const b = markBtn(); if (!b) return;
       b.textContent = MARK_LABEL[state.mark] + ' ▾';
       root.querySelectorAll('[data-mark]').forEach((m) => m.classList.toggle('cur', m.dataset.mark === state.mark));
     }
-    function closeMarkMenu() { const m = root.querySelector('.dv-menu'); if (m) m.hidden = true; const b = markBtn(); if (b) b.setAttribute('aria-expanded', 'false'); }
-    function toggleMarkMenu() {
-      const m = root.querySelector('.dv-menu'); if (!m) return;
-      m.hidden = !m.hidden; const b = markBtn(); if (b) b.setAttribute('aria-expanded', String(!m.hidden));
-      if (!m.hidden && b) { const r = b.getBoundingClientRect(); m.style.top = Math.round(r.bottom + 4) + 'px'; m.style.left = Math.max(8, Math.min(Math.round(r.left), innerWidth - 168)) + 'px'; }
-      if (!m.hidden) { const cur = m.querySelector('.cur') || m.firstElementChild; if (cur) cur.focus(); }
+    function currentFont() { const sel = state.selected && state.items.find((x) => x.id === state.selected); return sel && sel.type === 'text' ? (sel.font || 'hand2') : state.font; }
+    function syncFontBtn() {
+      const b = fontBtn(); if (!b) return;
+      const k = currentFont(); b.textContent = 'Aa ' + FONTS[k].label + ' ▾';
+      root.querySelectorAll('[data-font]').forEach((m) => m.classList.toggle('cur', m.dataset.font === k));
+    }
+    function closeMenus() { root.querySelectorAll('.dv-menu').forEach((m) => { m.hidden = true; }); [markBtn(), fontBtn()].forEach((b) => b && b.setAttribute('aria-expanded', 'false')); }
+    function toggleMenu(name, btn) {
+      const m = menuEl(name); if (!m) return;
+      const wasOpen = !m.hidden; closeMenus();
+      if (wasOpen) return;
+      m.hidden = false; if (btn) btn.setAttribute('aria-expanded', 'true');
+      if (btn) { const r = btn.getBoundingClientRect(); m.style.top = Math.round(r.bottom + 4) + 'px'; m.style.left = Math.max(8, Math.min(Math.round(r.left), innerWidth - 176)) + 'px'; }
+      const cur = m.querySelector('.cur') || m.firstElementChild; if (cur) cur.focus();
     }
     function chooseMark(kind) {
       state.mark = kind === 'cross' || kind === 'circle' ? kind : 'tick';
       try { localStorage.setItem('mw:mark', state.mark); } catch (_) {}
-      syncMarkBtn(); closeMarkMenu(); setTool('tick'); // ready to place: tap on the page
+      syncMarkBtn(); closeMenus(); setTool('tick'); // ready to place: tap on the page
     }
-    root.addEventListener('keydown', (e) => { const mm = root.querySelector('.dv-menu'); if (e.key === 'Escape' && mm && !mm.hidden) { e.stopPropagation(); closeMarkMenu(); const b = markBtn(); if (b) b.focus(); } }, true);
-    if (editable) syncMarkBtn();
+    function chooseFont(key) {
+      if (!FONTS[key]) return;
+      state.font = key; // new text boxes use it from now on
+      try { localStorage.setItem('mw:font', key); } catch (_) {}
+      const sel = state.selected && state.items.find((x) => x.id === state.selected);
+      if (sel && sel.type === 'text') { // and the box you have selected changes now
+        sel.font = key;
+        const el = root.querySelector('.dv-item[data-id="' + sel.id + '"]'), ta = el && el._ta;
+        if (ta) { const F = fontOf(sel); ta.style.fontFamily = F.css; ta.style.lineHeight = String(F.lh); ta.style.fontSize = sel.size * F.scale * state.scale + 'px'; ta.dispatchEvent(new Event('input', { bubbles: true })); }
+        touch();
+      }
+      syncFontBtn(); closeMenus();
+    }
+    root.addEventListener('keydown', (e) => { if (e.key === 'Escape' && root.querySelector('.dv-menu:not([hidden])')) { e.stopPropagation(); closeMenus(); } }, true);
+    if (editable) { syncMarkBtn(); syncFontBtn(); }
 
     // ------------------------------------------------------------ events
     root.addEventListener('click', (e) => {
       const mk = e.target.closest('[data-mark]');
       if (mk && root.contains(mk)) { chooseMark(mk.dataset.mark); return; }
-      if (!e.target.closest('.dv-markwrap')) closeMarkMenu();
+      const fk = e.target.closest('[data-font]');
+      if (fk && root.contains(fk)) { chooseFont(fk.dataset.font); return; }
+      const fb = e.target.closest('[data-fontbtn]');
+      if (fb && root.contains(fb)) { toggleMenu('font', fb); return; }
+      if (!e.target.closest('.dv-markwrap')) closeMenus();
       const t = e.target.closest('[data-act],[data-tool]');
       if (!t || !root.contains(t)) return;
-      if (t.dataset.tool === 'tick') { toggleMarkMenu(); return; }
+      if (t.dataset.tool === 'tick') { toggleMenu('mark', t); return; }
       if (t.dataset.tool === 'stamp') { openStamp(); return; }
       if (t.dataset.tool === 'sign') { openSign(); return; }
       if (t.dataset.tool) { setTool(state.tool === t.dataset.tool ? null : t.dataset.tool); return; }
@@ -1589,7 +1646,7 @@
           const d = t.dataset.act === 'size-up' ? 1 : -1;
           const it = state.items.find((i) => i.id === state.selected && i.type !== 'tick' && i.type !== 'stamp' && i.type !== 'signature') || null;
           const tick = state.items.find((i) => i.id === state.selected && i.type === 'tick') || null;
-          if (it) { it.size = Math.max(6, Math.min(28, it.size + d)); state.defaultSize = it.size; const el = root.querySelector('.dv-item[data-id="' + it.id + '"] textarea'); if (el) el.style.fontSize = it.size * HAND * state.scale + 'px'; touch(); }
+          if (it) { it.size = Math.max(6, Math.min(28, it.size + d)); state.defaultSize = it.size; const el = root.querySelector('.dv-item[data-id="' + it.id + '"] textarea'); if (el) el.style.fontSize = it.size * fontOf(it).scale * state.scale + 'px'; touch(); }
           else if (state.items.find((i) => i.id === state.selected && (i.type === 'stamp' || i.type === 'signature'))) {
             const st = state.items.find((i) => i.id === state.selected); const k = d > 0 ? 1.12 : 1 / 1.12;
             const nw = Math.max(50, Math.min(420, st.w * k)); st.h = st.h * (nw / st.w); st.w = nw;
@@ -1608,6 +1665,7 @@
     });
     $('.dv-close').addEventListener('click', close);
     const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && String(e.key).toLowerCase() === 'd' && editable && state.selected && !root.querySelector('.dv-stampdlg, .dv-sigdlg, .dv-dldlg')) { e.preventDefault(); duplicateItem(state.selected); return; }
       if (e.key !== 'Escape') return;
       const sd = root.querySelector('.dv-stampdlg, .dv-sigdlg, .dv-dldlg'); if (sd) { sd.remove(); return; }
       if (emailEl && !emailEl.hidden) { emailEl.hidden = true; return; }

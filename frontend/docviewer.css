@@ -283,3 +283,10 @@ button.dv-w.on { background: rgba(255, 211, 107, 0.6); }
 .dv-qf-form input { font: inherit; padding: .6rem .7rem; border-radius: 8px; border: 2px solid transparent; background: var(--paper); color: #1d1d1d; min-width: 0; }
 .dv-qf-form input:focus { outline: none; border-color: var(--gold); }
 .dv-qf-msg { margin: 0; color: #ffb3ab; font-size: .88rem; }
+
+/* Duplicate button on the selected box (sits left of the delete x) */
+.dv-dup { position: absolute; right: 1.0rem; top: -1.45rem; width: 1.35rem; height: 1.35rem; display: none; align-items: center; justify-content: center; padding: 0; background: var(--stage-2); color: var(--bulb); border: 1px solid var(--line); border-radius: 50%; cursor: pointer; }
+.dv-dup:hover { border-color: var(--gold); }
+.dv-item.sel .dv-dup { display: flex; }
+@media (pointer: coarse) { .dv-dup { width: 1.8rem; height: 1.8rem; top: -1.9rem; right: 1.55rem; } }
+@media (max-width: 760px) { .dv-dup { width: 2rem; height: 2rem; right: 4.5rem; top: -2.3rem; } }

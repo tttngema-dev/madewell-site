@@ -53,4 +53,28 @@
   };
   if (root.classList.contains('mw-loading')) { clearTimeout(safety); safety = setTimeout(() => root.classList.remove('mw-loading'), 20000); }
   window.addEventListener('pageshow', (e) => { if (e.persisted) window.MWLoader.hide(); }); // back button
+
+  // Any link marked data-go-pro opens the "Go Pro" pop-up right there (no detour via the pricing page).
+  // The pop-up's code is only fetched when someone clicks, so pages stay fast. If anything fails, the link's own address is used.
+  let proLoading = null;
+  function addScript(src) { return new Promise((res, rej) => { const s = d.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('load ' + src)); d.head.appendChild(s); }); }
+  function loadPro() {
+    if (window.MWBilling) return Promise.resolve();
+    if (proLoading) return proLoading;
+    if (!d.querySelector('link[href$="billing.css"]')) { const l = d.createElement('link'); l.rel = 'stylesheet'; l.href = '/billing.css'; d.head.appendChild(l); }
+    const steps = [];
+    if (!window.MADEWELL) steps.push('/config.js');
+    if (!window.supabase) steps.push('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2');
+    steps.push('/auth.js', '/pay.js', '/billing.js');
+    proLoading = steps.reduce((p, src) => p.then(() => addScript(src)), Promise.resolve()).catch((e) => { proLoading = null; throw e; });
+    return proLoading;
+  }
+  d.addEventListener('click', (e) => {
+    const a = e.target.closest('[data-go-pro]');
+    if (!a) return;
+    e.preventDefault();
+    window.MWLoader && window.MWLoader.show('One moment…', 8000);
+    loadPro().then(() => { window.MWLoader && window.MWLoader.hide(); window.MWBilling.openPaywall({ reason: 'upgrade' }); })
+      .catch(() => { window.MWLoader && window.MWLoader.hide(); location.href = a.getAttribute('href') || '/pricing'; });
+  });
 })();

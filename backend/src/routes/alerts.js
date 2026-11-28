@@ -64,23 +64,25 @@ function buildDigest(picks, p, base, test) {
     const d = daysLeft(t.closingDate);
     const left = d == null ? '' : d <= 0 ? 'Closes today' : d === 1 ? 'Closes tomorrow' : `${d} days left`;
     const meta = [t.buyer, t.province, t.category && t.category[0].toUpperCase() + t.category.slice(1)].filter(Boolean).map(esc).join(' · ');
-    return `<tr><td style="padding:14px 0;border-bottom:1px solid #e8e3d6">
-      <a href="${esc(`${f}/tenders.html?ocid=${encodeURIComponent(t.ocid)}`)}" style="color:#0b1730;font-weight:700;font-size:16px;text-decoration:none">${esc(t.title)}</a>
+    const link = esc(`${f}/tenders?ocid=${encodeURIComponent(t.ocid)}`);
+    return `<tr><td style="padding:16px 0;border-bottom:1px solid #e8e3d6">
+      <a href="${link}" style="color:#0a4fb3;font-weight:700;font-size:16px;text-decoration:underline">${esc(t.title)}</a>
       <div style="color:#667;font-size:13px;margin-top:3px">${meta}</div>
       <div style="font-size:13px;margin-top:5px"><b style="color:#b36b00">Closes ${esc(dayFmt(t.closingDate))}</b>${left ? ` <span style="color:#667">· ${left}</span>` : ''}</div>
+      <table role="presentation" cellspacing="0" cellpadding="0" style="margin-top:12px"><tr><td bgcolor="#f5a623" style="border-radius:22px"><a href="${link}" style="display:inline-block;padding:10px 20px;color:#0b1730;font-weight:700;font-size:14px;text-decoration:none;border-radius:22px">View tender &rarr;</a></td></tr></table>
     </td></tr>`;
   }).join('');
   const html = `<div style="background:#f4f1e8;padding:24px 12px;font-family:Arial,Helvetica,sans-serif"><table role="presentation" align="center" width="100%" style="max-width:560px;background:#fff;border-radius:14px;overflow:hidden">
     <tr><td style="background:#122244;padding:18px 24px;color:#fff;font-size:18px;font-weight:700">Made Well <span style="color:#f5a623">· Tender alerts</span></td></tr>
     <tr><td style="padding:22px 24px;color:#1d1d1d;line-height:1.5">
       <p style="margin:0 0 4px;font-size:20px;font-weight:700">${n} new tender${n === 1 ? '' : 's'} match your preferences</p>
-      <p style="margin:0;color:#667;font-size:14px">Open now. Always confirm the closing time on the official portal.</p>
+      <p style="margin:0;color:#667;font-size:14px">Tap <b>View tender</b> to see the details and documents. Always confirm the closing time before you bid.</p>
       <table role="presentation" width="100%" style="margin-top:8px">${rows}</table>
       <p style="margin:22px 0 0;text-align:center"><a href="${esc(f)}/tenders.html" style="background:#f5a623;color:#0b1730;padding:12px 24px;border-radius:30px;text-decoration:none;font-weight:700">Browse all tenders</a></p>
     </td></tr>
     <tr><td style="padding:14px 24px 22px;color:#889;font-size:12px;line-height:1.5;border-top:1px solid #eee">You get at most one email a day, with up to ${MAX_PER_DAY} tenders. <a href="${esc(prefs)}" style="color:#889">Change your preferences</a> · <a href="${esc(unsub)}" style="color:#889">Unsubscribe</a></td></tr>
   </table></div>`;
-  const text = [`${n} new tender${n === 1 ? '' : 's'} match your preferences`, '', ...picks.flatMap((t) => [t.title, `  ${[t.buyer, t.province].filter(Boolean).join(' · ')}`, `  Closes ${dayFmt(t.closingDate)}`, `  ${f}/tenders.html?ocid=${encodeURIComponent(t.ocid)}`, '']), `Change preferences: ${prefs}`, `Unsubscribe: ${unsub}`].join('\n');
+  const text = [`${n} new tender${n === 1 ? '' : 's'} match your preferences`, '', ...picks.flatMap((t) => [t.title, `  ${[t.buyer, t.province].filter(Boolean).join(' · ')}`, `  Closes ${dayFmt(t.closingDate)}`, `  View tender: ${f}/tenders?ocid=${encodeURIComponent(t.ocid)}`, '']), `Change preferences: ${prefs}`, `Unsubscribe: ${unsub}`].join('\n');
   return { subject, html, text, unsub };
 }
 
